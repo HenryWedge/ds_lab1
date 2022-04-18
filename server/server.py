@@ -46,7 +46,9 @@ class Server(Bottle):
         # if you add new URIs to the server, you need to add them here
         self.route('/', callback=self.index)
         self.get('/board', callback=self.get_board)
+        self.post('/board/propagate', callback=self.add_entry_with_propagation)
         self.post('/board', callback=self.add_entry)
+        self.post('/board/<param>/propagate', callback=self.modify_entry_with_propagation)
         self.post('/board/<param>/', callback=self.modify_entry)
         self.post('/', callback=self.post_index)
         # we give access to the templates elements
@@ -87,7 +89,7 @@ class Server(Bottle):
         try:
             if 'POST' in req:
                 res = requests.post('http://{}{}'.format(srv_ip, URI),
-                                    data=params_dict)
+                                    data=params_dict.dict)
             elif 'GET' in req:
                 res = requests.get('http://{}{}'.format(srv_ip, URI))
             # result can be accessed res.json()
@@ -112,7 +114,7 @@ class Server(Bottle):
                         board_title='Server {} ({})'.format(self.id,
                                                             self.ip),
                         board_dict=self.blackboard.get_content().items(),
-                        members_name_string='Hendrik Reiter')
+                        members_name_string='Julius Rüder and Hendrik Reiter')
 
     # get on ('/board')
     def get_board(self):
@@ -130,13 +132,17 @@ class Server(Bottle):
 
     def add_entry_with_propagation(self):
         self.add_entry()
-        self.propagate_to_all_servers('/board', request.forms)
+        self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms)
 
     def modify_entry(self, param):
         entry = request.params.get('entry')
+        req_param = request.params.get('param')
         isModify = request.params.get('delete') == '0'
 
-        self.blackboard.delete_content(param)
+        if param is None:
+            self.blackboard.delete_content(req_param)
+        else:
+            self.blackboard.delete_content(param)
 
         if (isModify):
             self.blackboard.modify_content(entry, entry)
@@ -144,7 +150,7 @@ class Server(Bottle):
 
     def modify_entry_with_propagation(self, param):
         self.modify_entry(param)
-        self.propagate_to_all_servers('/board/<param>/', request.forms)
+        self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms)
 
     # post on ('/')
     def post_index(self):
@@ -173,7 +179,7 @@ def main():
     parser.add_argument('--servers',
                         nargs='?',
                         dest='srv_list',
-                        default="10.1.0.1,10.1.0.2",
+                        default="127.0.0.1,127.0.0.2",
                         help='List of all servers present in the network')
     args = parser.parse_args()
     server_id = args.id

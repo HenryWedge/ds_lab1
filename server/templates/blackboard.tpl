@@ -10,7 +10,7 @@
                                 <input type="text" name="id" value="ID" readonly>
                                 <input type="text" name="entry" value="Entry" size="70%%" readonly>
                                 % for board_entry, board_element in board_dict:
-                                    <form class="entryform" target="noreload" method="post" action="/board/{{board_entry}}/">
+                                    <form class="entryform" target="noreload" method="post" action="/board/{{board_entry}}/propagate">
                                         <input type="text" name="id" value="{{board_entry}}" readonly disabled> <!-- disabled field won’t be sent -->
                                         <input type="text" name="entry" value="{{board_element}}" size="70%%">
                                         <button type="submit" name="delete" value="0">Modify</button>
