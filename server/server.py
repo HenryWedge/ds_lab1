@@ -110,7 +110,7 @@ class Server(Bottle):
 
     # route to ('/')
     def index(self):
-        return template('templates/index.tpl',
+        return template('server/templates/index.tpl',
                         board_title='Server {} ({})'.format(self.id,
                                                             self.ip),
                         board_dict=self.blackboard.get_content().items(),
@@ -164,7 +164,7 @@ class Server(Bottle):
 
     def get_template(self, filename):
         return static_file(filename, root='./server/templates/')
-        
+
 
 # ------------------------------------------------------------------------------------------------------
 def main():
@@ -179,11 +179,11 @@ def main():
     parser.add_argument('--servers',
                         nargs='?',
                         dest='srv_list',
-                        default="127.0.0.1,127.0.0.2",
+                        default="10.1.0.1,10.1.0.2",
                         help='List of all servers present in the network')
     args = parser.parse_args()
     server_id = args.id
-    server_ip = "127.0.0.{}".format(server_id)
+    server_ip = "10.1.0.{}".format(server_id)
     servers_list = args.srv_list.split(",")
 
     try:
