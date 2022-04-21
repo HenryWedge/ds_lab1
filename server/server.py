@@ -127,28 +127,28 @@ class Server(Bottle):
         try:
             new_entry = request.forms.get('entry')
             self.blackboard.modify_content(new_entry, new_entry)
+            print(time.time())
         except Exception as e:
             print("[ERROR] "+str(e))
 
     def add_entry_with_propagation(self):
+        print(time.time())
         self.add_entry()
         self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms)
 
     def modify_entry(self, param):
         entry = request.params.get('entry')
-        req_param = request.params.get('param')
         isModify = request.params.get('delete') == '0'
-
-        if param is None:
-            self.blackboard.delete_content(req_param)
-        else:
-            self.blackboard.delete_content(param)
+        self.blackboard.delete_content(param)
 
         if (isModify):
             self.blackboard.modify_content(entry, entry)
+
+        print(time.time())
         return
 
     def modify_entry_with_propagation(self, param):
+        print(time.time())
         self.modify_entry(param)
         self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms)
 
