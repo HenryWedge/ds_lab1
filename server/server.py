@@ -118,7 +118,7 @@ class Server(Bottle):
 
     # get on ('/board')
     def get_board(self):
-        return template('templates/blackboard.tpl',
+        return template('server/templates/blackboard.tpl',
                         board_title='Server {} ({})'.format(self.id,
                                                             self.ip),
                         board_dict=self.blackboard.get_content().items())
