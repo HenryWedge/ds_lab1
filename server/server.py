@@ -139,10 +139,7 @@ class Server(Bottle):
         req_param = request.params.get('param')
         isModify = request.params.get('delete') == '0'
 
-        if param is None:
-            self.blackboard.delete_content(req_param)
-        else:
-            self.blackboard.delete_content(param)
+        self.blackboard.delete_content(param)
 
         if (isModify):
             self.blackboard.modify_content(entry, entry)
