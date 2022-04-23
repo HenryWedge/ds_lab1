@@ -118,7 +118,7 @@ class Server(Bottle):
 
     # get on ('/board')
     def get_board(self):
-        return template('templates/blackboard.tpl',
+        return template('server/templates/blackboard.tpl',
                         board_title='Server {} ({})'.format(self.id,
                                                             self.ip),
                         board_dict=self.blackboard.get_content().items())
@@ -127,12 +127,10 @@ class Server(Bottle):
         try:
             new_entry = request.forms.get('entry')
             self.blackboard.modify_content(new_entry, new_entry)
-            print(time.time())
         except Exception as e:
             print("[ERROR] "+str(e))
 
     def add_entry_with_propagation(self):
-        print(time.time())
         self.add_entry()
         self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms)
 
@@ -143,12 +141,9 @@ class Server(Bottle):
 
         if (isModify):
             self.blackboard.modify_content(entry, entry)
-
-        print(time.time())
         return
 
     def modify_entry_with_propagation(self, param):
-        print(time.time())
         self.modify_entry(param)
         self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms)
 
