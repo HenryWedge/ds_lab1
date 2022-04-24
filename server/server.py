@@ -10,6 +10,7 @@ from bottle import Bottle, request, template, run, static_file
 import requests
 # ------------------------------------------------------------------------------------------------------
 
+
 class Blackboard():
 
     def __init__(self):
