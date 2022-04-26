@@ -104,9 +104,7 @@ class Server(Bottle):
     def propagate_to_all_servers(self, URI, req='POST', params_dict=None):
         for srv_ip in self.servers_list:
             if srv_ip != self.ip: # don't propagate to yourself
-                success = self.contact_another_server(srv_ip, URI, req, params_dict)
-                if not success:
-                    print("[WARNING ]Could not contact server {}".format(srv_ip))
+                self.do_parallel_task(method=self.contact_another_server,args=(srv_ip, URI, req, params_dict))
 
 
     # route to ('/')
