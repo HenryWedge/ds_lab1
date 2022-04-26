@@ -106,7 +106,7 @@ class Server(Bottle):
             if srv_ip != self.ip:
                 self.do_parallel_task(method=self.contact_another_server, args=(srv_ip, URI, req, params_dict)) # don't propagate to yourself
         end_time = time.time() * 1000
-        print(end_time - start_time)        
+        print(end_time - start_time)
 
     # route to ('/')
     def index(self):
@@ -136,7 +136,6 @@ class Server(Bottle):
 
     def modify_entry(self, param):
         entry = request.params.get('entry')
-        req_param = request.params.get('param')
         isModify = request.params.get('delete') == '0'
 
         self.blackboard.delete_content(param)
@@ -146,6 +145,7 @@ class Server(Bottle):
         return
 
     def modify_entry_with_propagation(self, param):
+        print('modify' + param)
         self.modify_entry(param)
         self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms)
 
