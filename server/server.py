@@ -33,6 +33,15 @@ class Blackboard():
         with self.lock:
             self.content.pop(delete_id)
         return
+# ------------------------------------------------------------------------------------------------------
+class Election():
+    def __init__(self,server_id,servers_list):
+        self.server_id = server_id
+        self.leaderelection_attribute = self.server_id # TODO:  Should be random between [0,20]
+        self.serverDict = dict()
+        self.current_leader = -1
+        self.leader = false
+
 
 # ------------------------------------------------------------------------------------------------------
 class Server(Bottle):
@@ -181,12 +190,13 @@ def main():
     servers_list = args.srv_list.split(",")
 
     try:
-        server = Server(server_id,
+        application = Server(server_id,
                         server_ip,
                         servers_list)
-        bottle.run(server,
-                   host=server_ip,
-                   port=PORT)
+        bottle.run( app = application,
+                    server='paste',
+                    host=server_ip,
+                    port=PORT)
     except Exception as e:
         print("[ERROR] "+str(e))
 
