@@ -35,13 +35,35 @@ class Blackboard():
         return
 # ------------------------------------------------------------------------------------------------------
 class Election():
-    def __init__(self,server_id,servers_list):
-        self.server_id = server_id
-        self.leaderelection_attribute = self.server_id # TODO:  Should be random between [0,20]
-        self.serverDict = dict()
+    def __init__(self,serv_ip,servers_list):
+        self.server_ip = server_ip
+        self.server_id = int(serv_ip.split('.')[-1])
+        self.leader_attribute = self.server_id # TODO:  Should be random between [0,20]
+        self.serverDict = dict() [10.0.0.1 : 21 , 10.0.0.2 : 21 ,....]
         self.current_leader = -1
         self.leader = false
 
+        start_election()
+
+    def get_leader_Attribute(self):
+        return self.leader_attribute
+
+    def start_election(self):
+        #ping all servers
+
+    def ping_HigherServerID(self):
+        for s in self.serverDict:
+            if self.serverDict[s] > self.server_id:
+                ping_server(s)
+
+
+    def ping_server(self,serv_ip):
+        data = dict()
+        URI  = '/startelection'
+        data[self.serv_ip] = self.leader_attribute
+        res = requests.post('http://{}{}'.format(srv_ip, URI), data)
+        if res.status_code == 200:
+            success = True
 
 # ------------------------------------------------------------------------------------------------------
 class Server(Bottle):
@@ -49,6 +71,7 @@ class Server(Bottle):
     def __init__(self, ID, IP, servers_list):
         super(Server, self).__init__()
         self.blackboard = Blackboard()
+        #self.election = Election()
         self.id = int(ID)
         self.ip = str(IP)
         self.servers_list = servers_list
@@ -65,7 +88,8 @@ class Server(Bottle):
         self.get('/templates/<filename:path>', callback=self.get_template)
         # You can have variables in the URI, here's an example
         # self.post('/board/<element_id:int>/', callback=self.post_board) where post_board takes an argument (integer) called element_id
-
+        #Election
+        self.get('/startelection', callback=self.election.get_leader_Attribute)
 
     def do_parallel_task(self, method, args=None):
         # create a thread running a new task
@@ -193,10 +217,10 @@ def main():
         application = Server(server_id,
                         server_ip,
                         servers_list)
-        bottle.run( app = application,
-                    server='paste',
-                    host=server_ip,
-                    port=PORT)
+        bottle.run(app = application,
+                    server = 'paste',
+                    host = server_ip,
+                    port = PORT)
     except Exception as e:
         print("[ERROR] "+str(e))
 
