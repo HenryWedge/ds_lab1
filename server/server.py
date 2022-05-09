@@ -62,21 +62,39 @@ class Election():
                 self.server_Dict[s] = answer_leader_attribute
 
     def election(self):
+        URI = '/election'
         for s in self.server_Dict:
             if self.server_Dict[s] > self.leader_attribute:
                 success = False
                 try:
-                    res = requests.post('http://{}{}'.format(srv_ip, URI),
-                                            data={self.server_ip : self.leader_attribute})
+                    res = requests.post('http://{}{}'.format(s, URI),
+                                            data={'server_ip':self.server_ip,'leader_attribute':self.leader_attribute})
                     if res.status_code == 200:
                         success = True
                 except Exception as e:
                     print("[ERROR] "+str(e))
-            print(success)
-        return
 
     def answer(self):
-        return
+        URI = '/answer'
+        ip          = request.forms.get('server_ip')
+        attribute   = request.forms.get('leader_attribute')
+        print(str(ip) + ':' + str(attribute))
+        if int(attribute) < self.leader_attribute:
+            try:
+                res = requests.post('http://{}{}'.format(ip, URI),
+                                        data={'take-over': self.server_ip})
+                if res.status_code == 200:
+                    success = True
+            except Exception as e:
+                print("[ERROR] "+str(e))
+        if int(attribute) > self.leader_attribute:
+            None
+        if int(attribute) == self.leader_attribute:
+            None
+
+    def recv_answer(self):
+        something = request.forms.get('take-over')
+        print(str(True) + ' wadwadawd' + str(something))
 
     def coordinator(self):
         return
@@ -126,6 +144,8 @@ class Server(Bottle):
         # self.post('/board/<element_id:int>/', callback=self.post_board) where post_board takes an argument (integer) called element_id
         #Election
         self.get('/electionattribute', callback=self.election.get_leader_Attribute)
+        self.post('/election',callback=self.election.answer)
+        self.post('/answer',callback=self.election.recv_answer)
         self.get('/testelection', callback =self.election.start_election)
 
 
