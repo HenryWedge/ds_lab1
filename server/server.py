@@ -35,35 +35,71 @@ class Blackboard():
         return
 # ------------------------------------------------------------------------------------------------------
 class Election():
-    def __init__(self,serv_ip,servers_list):
+    def __init__(self,server_ip,server_list):
         self.server_ip = server_ip
-        self.server_id = int(serv_ip.split('.')[-1])
+        self.server_list = server_list
+        self.server_id = int(self.server_ip.split('.')[-1])
         self.leader_attribute = self.server_id # TODO:  Should be random between [0,20]
-        self.serverDict = dict() [10.0.0.1 : 21 , 10.0.0.2 : 21 ,....]
+        self.server_Dict = dict() #[10.0.0.1 : 21 , 10.0.0.2 : 21 ,....]
         self.current_leader = -1
-        self.leader = false
+        self.is_leader = False
 
-        start_election()
 
     def get_leader_Attribute(self):
-        return self.leader_attribute
+        #print('LE Atribute:' + str(self.leader_attribute))
+        return str(self.leader_attribute)
+
+    def init_election(self):
+        self.ping_AllServers()
 
     def start_election(self):
-        #ping all servers
+        self.election()
 
-    def ping_HigherServerID(self):
-        for s in self.serverDict:
-            if self.serverDict[s] > self.server_id:
-                ping_server(s)
+    def ping_AllServers(self):
+        for s in self.server_list:
+            if not(s==self.server_ip):
+                answer_leader_attribute = self.ping_server(s)
+                self.server_Dict[s] = answer_leader_attribute
+
+    def election(self):
+        for s in self.server_Dict:
+            if self.server_Dict[s] > self.leader_attribute:
+                success = False
+                try:
+                    res = requests.post('http://{}{}'.format(srv_ip, URI),
+                                            data={self.server_ip : self.leader_attribute})
+                    if res.status_code == 200:
+                        success = True
+                except Exception as e:
+                    print("[ERROR] "+str(e))
+            print(success)
+        return
+
+    def answer(self):
+        return
+
+    def coordinator(self):
+        return
 
 
     def ping_server(self,serv_ip):
         data = dict()
-        URI  = '/startelection'
-        data[self.serv_ip] = self.leader_attribute
-        res = requests.post('http://{}{}'.format(srv_ip, URI), data)
-        if res.status_code == 200:
-            success = True
+        URI  = '/electionattribute'
+        try:
+            res = requests.get('http://{}{}'.format(serv_ip, URI))
+            if res.status_code == 200:
+                success = True
+                return int(res.content)
+        except Exception as e:
+            print("[ERROR] "+str(e))
+
+        return -1
+
+
+
+
+
+
 
 # ------------------------------------------------------------------------------------------------------
 class Server(Bottle):
@@ -71,7 +107,7 @@ class Server(Bottle):
     def __init__(self, ID, IP, servers_list):
         super(Server, self).__init__()
         self.blackboard = Blackboard()
-        #self.election = Election()
+        self.election = Election(IP,servers_list)
         self.id = int(ID)
         self.ip = str(IP)
         self.servers_list = servers_list
@@ -89,7 +125,13 @@ class Server(Bottle):
         # You can have variables in the URI, here's an example
         # self.post('/board/<element_id:int>/', callback=self.post_board) where post_board takes an argument (integer) called element_id
         #Election
-        self.get('/startelection', callback=self.election.get_leader_Attribute)
+        self.get('/electionattribute', callback=self.election.get_leader_Attribute)
+        self.get('/testelection', callback =self.election.start_election)
+
+
+        #-------------------------------------------------
+        self.do_parallel_task_after_delay(2, self.election.init_election,args=())
+
 
     def do_parallel_task(self, method, args=None):
         # create a thread running a new task
