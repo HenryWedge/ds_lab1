@@ -10,19 +10,16 @@ from bottle import Bottle, request, template, run, static_file
 import requests
 # ------------------------------------------------------------------------------------------------------
 
-
 class Blackboard():
 
     def __init__(self):
         self.content = dict()
         self.lock = Lock() # use lock when you modify the content
 
-
     def get_content(self):
         with self.lock:
             cnt = self.content
         return cnt
-
 
     def modify_content(self, new_id, new_entry):
         with self.lock:
@@ -33,99 +30,15 @@ class Blackboard():
         with self.lock:
             self.content.pop(delete_id)
         return
-# ------------------------------------------------------------------------------------------------------
-class Election():
-    def __init__(self,server_ip,server_list):
-        self.server_ip = server_ip
-        self.server_list = server_list
-        self.server_id = int(self.server_ip.split('.')[-1])
-        self.leader_attribute = self.server_id # TODO:  Should be random between [0,20]
-        self.server_Dict = dict() #[10.0.0.1 : 21 , 10.0.0.2 : 21 ,....]
-        self.current_leader = -1
-        self.is_leader = False
-
-
-    def get_leader_Attribute(self):
-        #print('LE Atribute:' + str(self.leader_attribute))
-        return str(self.leader_attribute)
-
-    def init_election(self):
-        self.ping_AllServers()
-
-    def start_election(self):
-        self.election()
-
-    def ping_AllServers(self):
-        for s in self.server_list:
-            if not(s==self.server_ip):
-                answer_leader_attribute = self.ping_server(s)
-                self.server_Dict[s] = answer_leader_attribute
-
-    def election(self):
-        URI = '/election'
-        for s in self.server_Dict:
-            if self.server_Dict[s] > self.leader_attribute:
-                success = False
-                try:
-                    res = requests.post('http://{}{}'.format(s, URI),
-                                            data={'server_ip':self.server_ip,'leader_attribute':self.leader_attribute})
-                    if res.status_code == 200:
-                        success = True
-                except Exception as e:
-                    print("[ERROR] "+str(e))
-
-    def answer(self):
-        URI = '/answer'
-        ip          = request.forms.get('server_ip')
-        attribute   = request.forms.get('leader_attribute')
-        print(str(ip) + ':' + str(attribute))
-        if int(attribute) < self.leader_attribute:
-            try:
-                res = requests.post('http://{}{}'.format(ip, URI),
-                                        data={'take-over': self.server_ip})
-                if res.status_code == 200:
-                    success = True
-            except Exception as e:
-                print("[ERROR] "+str(e))
-        if int(attribute) > self.leader_attribute:
-            None
-        if int(attribute) == self.leader_attribute:
-            None
-
-    def recv_answer(self):
-        something = request.forms.get('take-over')
-        print(str(True) + ' wadwadawd' + str(something))
-
-    def coordinator(self):
-        return
-
-
-    def ping_server(self,serv_ip):
-        data = dict()
-        URI  = '/electionattribute'
-        try:
-            res = requests.get('http://{}{}'.format(serv_ip, URI))
-            if res.status_code == 200:
-                success = True
-                return int(res.content)
-        except Exception as e:
-            print("[ERROR] "+str(e))
-
-        return -1
-
-
-
-
-
-
 
 # ------------------------------------------------------------------------------------------------------
+
 class Server(Bottle):
 
     def __init__(self, ID, IP, servers_list):
         super(Server, self).__init__()
         self.blackboard = Blackboard()
-        self.election = Election(IP,servers_list)
+        self.election = Election(IP,ID,servers_list)
         self.id = int(ID)
         self.ip = str(IP)
         self.servers_list = servers_list
@@ -142,14 +55,14 @@ class Server(Bottle):
         self.get('/templates/<filename:path>', callback=self.get_template)
         # You can have variables in the URI, here's an example
         # self.post('/board/<element_id:int>/', callback=self.post_board) where post_board takes an argument (integer) called element_id
-        #Election
-        self.get('/electionattribute', callback=self.election.get_leader_Attribute)
-        self.post('/election',callback=self.election.answer)
-        self.post('/answer',callback=self.election.recv_answer)
-        self.get('/testelection', callback =self.election.start_election)
-
 
         #-------------------------------------------------
+        #Election
+        self.post('/election/attribute', callback=self.election.post_leader_Attribute)
+        self.post('/election/election',callback=self.election.answer)
+        self.post('/election/answer',callback=self.election.recv_answer)
+        self.get('/testelection', callback =self.election.start_election)
+
         self.do_parallel_task_after_delay(2, self.election.init_election,args=())
 
 
@@ -185,7 +98,7 @@ class Server(Bottle):
         try:
             if 'POST' in req:
                 res = requests.post('http://{}{}'.format(srv_ip, URI),
-                                    data=params_dict.dict)
+                                    data=params_dict)
             elif 'GET' in req:
                 res = requests.get('http://{}{}'.format(srv_ip, URI))
             # result can be accessed res.json()
@@ -226,7 +139,7 @@ class Server(Bottle):
 
     def add_entry_with_propagation(self):
         self.add_entry()
-        self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms)
+        self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms.dict)
 
     def modify_entry(self, param):
         entry = request.params.get('entry')
@@ -239,7 +152,7 @@ class Server(Bottle):
 
     def modify_entry_with_propagation(self, param):
         self.modify_entry(param)
-        self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms)
+        self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms.dict)
 
     # post on ('/')
     def post_index(self):
@@ -254,6 +167,67 @@ class Server(Bottle):
     def get_template(self, filename):
         return static_file(filename, root='./server/templates/')
 
+# ------------------------------------------------------------------------------------------------------
+
+
+class Election(Server):
+    def __init__(self,server_ip,server_id,server_list):
+        self.server_ip = server_ip
+        self.server_list = server_list
+        self.server_id = server_id
+        self.leader_attribute = self.server_id # TODO:  Should be random between [0,20]
+        self.server_Dict = dict() #[10.0.0.1 : 21 , 10.0.0.2 : 21 ,....]
+        self.current_leader = -1
+        self.is_leader = False
+
+
+    def post_leader_Attribute(self):
+        ip          = request.forms.get('server_ip')
+        attribute   = request.forms.get('leader_attribute')
+        self.server_Dict[ip]=int(attribute)
+
+    def init_election(self):
+        self.ping_AllServers()
+
+    def start_election(self):
+        self.election()
+
+    def ping_AllServers(self):
+        for s in self.server_list:
+            if not(s==self.server_ip):
+                self.ping_server(s)
+    def ping_server(self,srv_ip):
+        URI  = '/election/attribute'
+        data ={'server_ip':self.server_ip,'leader_attribute':self.leader_attribute,'server_id':self.server_id}
+        super().contact_another_server(srv_ip, URI, req='POST',params_dict=data)
+
+    def election(self):
+        URI = '/election/election'
+        data ={'server_ip':self.server_ip,'leader_attribute':self.leader_attribute,'server_id':self.server_id}
+        for s in self.server_Dict:
+            if self.server_Dict[s] > self.leader_attribute:
+                super().contact_another_server(s, URI, req='POST',params_dict=data)
+
+    def answer(self):
+        URI = '/election/answer'
+        ip          = request.forms.get('server_ip')
+        attribute   = request.forms.get('leader_attribute')
+        id          = request.forms.get('server_id')
+        data={'take-over': self.server_ip}
+
+        if int(attribute) < self.leader_attribute:
+            super().contact_another_server(ip, URI, req='POST',params_dict=data)
+        if int(attribute) > self.leader_attribute:
+            NotImplemented
+        if int(attribute) == self.leader_attribute:
+            NotImplemented
+
+    def recv_answer(self):
+        something = request.forms.get('take-over')
+        print(str(True) + ' wadwadawd' + str(something))
+
+    def coordinator(self):
+        return
 
 # ------------------------------------------------------------------------------------------------------
 def main():
