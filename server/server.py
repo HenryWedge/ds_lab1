@@ -38,7 +38,7 @@ class Server(Bottle):
     def __init__(self, ID, IP, servers_list):
         super(Server, self).__init__()
         self.blackboard = Blackboard()
-        self.election = Election(IP,ID,servers_list)
+        self.election = Election(self,IP,ID,servers_list)
         self.id = int(ID)
         self.ip = str(IP)
         self.servers_list = servers_list
@@ -62,6 +62,7 @@ class Server(Bottle):
         self.post('/election/election',callback=self.election.answer)
         self.post('/election/answer',callback=self.election.recv_answer)
         self.get('/testelection', callback =self.election.start_election)
+        self.post('/election/coordinator',callback=self.election.recv_coordinator)
 
         self.do_parallel_task_after_delay(2, self.election.init_election,args=())
 
@@ -170,15 +171,18 @@ class Server(Bottle):
 # ------------------------------------------------------------------------------------------------------
 
 
-class Election(Server):
-    def __init__(self,server_ip,server_id,server_list):
+class Election():
+    def __init__(self,server, server_ip,server_id,server_list):
+        self.server = server
         self.server_ip = server_ip
         self.server_list = server_list
         self.server_id = server_id
         self.leader_attribute = self.server_id # TODO:  Should be random between [0,20]
         self.server_Dict = dict() #[10.0.0.1 : 21 , 10.0.0.2 : 21 ,....]
-        self.current_leader = -1
+        self.current_leader = None
         self.is_leader = False
+
+        self.got_answer = False
 
 
     def post_leader_Attribute(self):
@@ -196,19 +200,26 @@ class Election(Server):
         for s in self.server_list:
             if not(s==self.server_ip):
                 self.ping_server(s)
+
     def ping_server(self,srv_ip):
         URI  = '/election/attribute'
         data ={'server_ip':self.server_ip,'leader_attribute':self.leader_attribute,'server_id':self.server_id}
-        super().contact_another_server(srv_ip, URI, req='POST',params_dict=data)
+        #self.server.do_parallel_task(method=self.server.contact_another_server,args=(srv_ip, URI, 'POST',data))
+        self.server.contact_another_server(srv_ip, URI, req='POST',params_dict=data)
 
     def election(self):
+        print('--------Election')
         URI = '/election/election'
         data ={'server_ip':self.server_ip,'leader_attribute':self.leader_attribute,'server_id':self.server_id}
         for s in self.server_Dict:
             if self.server_Dict[s] > self.leader_attribute:
-                super().contact_another_server(s, URI, req='POST',params_dict=data)
+                #self.server.do_parallel_task(method=self.server.contact_another_server,args=(s, URI, 'POST',data))
+                self.server.contact_another_server(s, URI, req='POST',params_dict=data)
+        if not(self.got_answer):
+            self.coordinator()
 
     def answer(self):
+        print('-------- Answer -----------')
         URI = '/election/answer'
         ip          = request.forms.get('server_ip')
         attribute   = request.forms.get('leader_attribute')
@@ -216,18 +227,31 @@ class Election(Server):
         data={'take-over': self.server_ip}
 
         if int(attribute) < self.leader_attribute:
-            super().contact_another_server(ip, URI, req='POST',params_dict=data)
-        if int(attribute) > self.leader_attribute:
-            NotImplemented
-        if int(attribute) == self.leader_attribute:
-            NotImplemented
+            #self.server.do_parallel_task(method=self.server.contact_another_server,args=(ip, URI, 'POST',data))
+            self.server.contact_another_server(ip, URI, req='POST',params_dict=data)
+            if self.current_leader == None:
+                self.start_election()
 
     def recv_answer(self):
+        print('-------- Recv Answer -----------')
         something = request.forms.get('take-over')
-        print(str(True) + ' wadwadawd' + str(something))
+        self.got_answer = True
 
     def coordinator(self):
-        return
+        if self.current_leader == self.server_ip :
+            return
+        self.current_leader = self.server_ip
+        print('-------- Coordinator -----------')
+        URI = '/election/coordinator'
+        data={'coordinator': self.server_ip}
+
+        self.server.propagate_to_all_servers(URI, req='POST', params_dict=data)
+
+    def recv_coordinator(self):
+        leader = request.forms.get('coordinator')
+        print(leader + ' is now coordinator!')
+        self.current_leader = leader
+
 
 # ------------------------------------------------------------------------------------------------------
 def main():
