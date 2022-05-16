@@ -8,6 +8,7 @@ import traceback
 import bottle
 from bottle import Bottle, request, template, run, static_file
 import requests
+import random
 # ------------------------------------------------------------------------------------------------------
 
 class Blackboard():
@@ -75,10 +76,11 @@ class Server(Bottle):
 
         # 2 add modify : board -> 1(C) board ->  2,3
 
+        self.coordinator = None
+        self.do_parallel_task_after_delay(2, self.election.start_election,args=())
 
-        #self.do_parallel_task_after_delay(2, self.election.start_election,args=())
-
-        self.coordinator = '10.1.0.1'
+    def set_coordinator(self,c):
+        self.coordinator = c
 
     def do_parallel_task(self, method, args=None):
         # create a thread running a new task
@@ -144,6 +146,8 @@ class Server(Bottle):
                                                             self.ip),
                         board_dict=self.blackboard.get_content().items())
 
+
+
     def add_entry(self):
         try:
             new_entry = request.forms.get('entry')
@@ -155,29 +159,46 @@ class Server(Bottle):
         #self.add_entry()
         #self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms.dict)
         URI = '/coordinator/add'
-        self.contact_another_server(self.coordinator, URI, req='POST', params_dict=request.forms.dict)
+        #success = self.contact_another_server(self.coordinator, URI, req='POST', params_dict=request.forms.dict)
+        form = request.forms.dict
+        self.propagtion_with_failure(URI,forms=form)
 
     def modify_entry(self, param):
         entry = request.params.get('entry')
         isModify = request.params.get('delete') == '0'
         self.blackboard.delete_content(param)
-
         if (isModify):
             self.blackboard.modify_content(entry, entry)
-        return
+
+    def propagtion_with_failure(self,URI:str,forms=None):
+        forms = request.forms.dict
+        success = self.contact_another_server(self.coordinator, URI, req='POST', params_dict=forms)
+        if not(success):
+            self.coordinator = None
+            self.do_parallel_task(self.election.start_election,args=())
+            while self.coordinator==None:
+                time.sleep(1)
+            success = self.contact_another_server(self.coordinator, URI, req='POST', params_dict=forms)
+            if not(success):
+                self.propagtion_with_failure(URI,forms=forms)
+
 
     def modify_entry_with_propagation(self, param):
         #self.modify_entry(param)
         #self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms.dict)
-        URI = '/coordinator/modify/{}/'
-        self.contact_another_server(self.coordinator, URI.format(param), req='POST', params_dict=request.forms.dict)
+        URI = '/coordinator/modify/{}/'.format(param)
+        #success = self.contact_another_server(self.coordinator, URI, req='POST', params_dict=request.forms.dict)
+        form = request.forms.dict
+        self.propagtion_with_failure(URI,forms=form)
 
     #Centralized Blackboard
     def update_board(self):
         self.propagate_to_all_servers(URI='/board/update/recv', req='POST',params_dict=self.blackboard.get_content())
 
     def recv_update_board(self):
-        self.blackboard.set_content(request.forms)
+        b = request.forms.dict
+        b = {k:b[k][0] for k in b}  #parsing
+        self.blackboard.set_content(b)
 
     def coordinator_add(self):
         self.add_entry()
@@ -209,8 +230,8 @@ class Election():
         self.server_ip = server_ip
         self.server_list = server_list
         self.server_id = server_id
-        self.leader_attribute = self.server_id # TODO:  Should be random between [0,20]
-        self.server_Dict = dict() #[10.0.0.1 : 21 , 10.0.0.2 : 21 ,....]
+        self.leader_attribute = + random.randint(0,20) #self.server_id # TODO:  Should be random between [0,20]
+        self.server_Dict = dict()
 
         self.current_leader = None
         self.got_answer = False
@@ -257,6 +278,7 @@ class Election():
         ip          = request.forms.get('server_ip')
         attribute   = request.forms.get('leader_attribute')
         id          = request.forms.get('server_id')
+
         data={'take-over': self.server_ip}
 
         with self.lock:
@@ -280,20 +302,20 @@ class Election():
         URI = '/election/coordinator'
         data={'coordinator': self.server_ip}
 
-        print('-------- Coordinator -----------')
-        print('counter: ' + str(self.coordinator_counter))
+        print('-------- Coordinator -----------' + str(self.leader_attribute))
         self.server.propagate_to_all_servers(URI, req='POST', params_dict=data)
 
         self.reset_election(self.server_ip)
 
     def recv_coordinator(self):
         leader = request.forms.get('coordinator')
-        print('!!!!!!!!!!!' + leader + ' is now coordinator!')
+        print('-------- Worker -----------' + str(self.leader_attribute))
         self.reset_election(leader)
 
 
     def reset_election(self,ip):
         self.current_leader = ip
+        self.server.set_coordinator(ip)
         self.got_answer = False
         self.coordinator_counter = 0
         print(self.server_Dict)
