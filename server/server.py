@@ -58,11 +58,10 @@ class Server(Bottle):
 
         #-------------------------------------------------
         #Election
-        self.post('/election/attribute', callback=self.election.post_leader_Attribute)
         self.post('/election/election',callback=self.election.answer)
         self.post('/election/answer',callback=self.election.recv_answer)
-        self.get('/testelection', callback =self.election.start_election)
         self.post('/election/coordinator',callback=self.election.recv_coordinator)
+        self.get('/testelection', callback =self.election.start_election)
 
         self.do_parallel_task_after_delay(2, self.election.start_election,args=())
 
@@ -185,29 +184,8 @@ class Election():
         self.lock = Lock()
         self.coordinator_counter = 0
 
-
-    def post_leader_Attribute(self):
-        ip          = request.forms.get('server_ip')
-        attribute   = request.forms.get('leader_attribute')
-        self.server_Dict[ip]=int(attribute)
-
-    def init_election(self):
-        self.ping_AllServers()
-
     def start_election(self):
         self.election()
-
-    def ping_AllServers(self):
-        for s in self.server_list:
-            if not(s==self.server_ip):
-                self.ping_server(s)
-
-    def ping_server(self,srv_ip):
-        URI  = '/election/attribute'
-        data ={'server_ip':self.server_ip,'leader_attribute':self.leader_attribute,'server_id':self.server_id}
-        time.sleep(0.075)
-        #self.server.do_parallel_task(method=self.server.contact_another_server,args=(srv_ip, URI, 'POST',data))
-        self.server.contact_another_server(srv_ip, URI, req='POST',params_dict=data)
 
     def election(self):
         #print('--------Election')
