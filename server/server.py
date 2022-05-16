@@ -185,10 +185,12 @@ class Election():
         self.coordinator_counter = 0
 
     def start_election(self):
-        self.election()
+        time.sleep(0.1)
+        self.server.do_parallel_task(method=self.election,args=())
+        #self.election()
 
     def election(self):
-        #print('--------Election')
+        #print('--------Election')   ################
         URI = '/election/election'
         data ={'server_ip':self.server_ip,'leader_attribute':self.leader_attribute,'server_id':self.server_id}
 
@@ -205,9 +207,15 @@ class Election():
                 time.sleep(0.175)
                 self.server.do_parallel_task(method=self.server.contact_another_server,args=(s, URI, 'POST',data))
                 #self.server.contact_another_server(s, URI, req='POST',params_dict=data)
+
+        counter = 0
+        with self.lock:
+            self.coordinator_counter += 1
+            counter = self.coordinator_counter
         time.sleep(2)
-        if not(self.got_answer):
-            self.server.do_parallel_task(method=self.coordinator,args=())
+        with self.lock:
+            if not(self.got_answer) and counter == self.coordinator_counter:
+                self.server.do_parallel_task(method=self.coordinator,args=())
 
     def answer(self):
         #print('-------- Answer -----------')
@@ -222,7 +230,7 @@ class Election():
 
         self.server_Dict[ip] = int(attribute)
         if int(attribute) < self.leader_attribute:
-            time.sleep(0.075)
+            time.sleep(0.175)
             self.server.do_parallel_task(method=self.server.contact_another_server,args=(ip, URI, 'POST',data))
             #self.server.contact_another_server(ip, URI, req='POST',params_dict=data)
             self.start_election()
@@ -237,27 +245,24 @@ class Election():
         self.current_leader = self.server_ip
         URI = '/election/coordinator'
         data={'coordinator': self.server_ip}
-        counter = 0
-        with self.lock:
-            self.coordinator_counter += 1
-            counter = self.coordinator_counter
-        time.sleep(2)
-        with self.lock:
-            if counter == self.coordinator_counter:
-                print('-------- Coordinator -----------')
-                print('counter: ' + str(self.coordinator_counter))
-                self.server.propagate_to_all_servers(URI, req='POST', params_dict=data)
-                self.current_leader = self.server_ip
-                self.got_answer = False
-                print(self.server_Dict)
+
+        print('-------- Coordinator -----------')
+        print('counter: ' + str(self.coordinator_counter))
+        self.server.propagate_to_all_servers(URI, req='POST', params_dict=data)
+
+        self.reset_election(self.server_ip)
 
     def recv_coordinator(self):
         leader = request.forms.get('coordinator')
         print('!!!!!!!!!!!' + leader + ' is now coordinator!')
-        self.current_leader = leader
-        self.got_answer = False
-        print(self.server_Dict)
+        self.reset_election(leader)
 
+
+    def reset_election(self,ip):
+        self.current_leader = ip
+        self.got_answer = False
+        self.coordinator_counter = 0
+        print(self.server_Dict)
 
 # ------------------------------------------------------------------------------------------------------
 def main():
