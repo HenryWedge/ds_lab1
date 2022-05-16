@@ -21,6 +21,10 @@ class Blackboard():
             cnt = self.content
         return cnt
 
+    def set_content(self,cnt):
+        with self.lock:
+            self.content = cnt
+
     def modify_content(self, new_id, new_entry):
         with self.lock:
             self.content[str(new_id)] = new_entry
@@ -30,6 +34,7 @@ class Blackboard():
         with self.lock:
             self.content.pop(delete_id)
         return
+
 
 # ------------------------------------------------------------------------------------------------------
 
@@ -62,8 +67,18 @@ class Server(Bottle):
         self.post('/election/answer',callback=self.election.recv_answer)
         self.post('/election/coordinator',callback=self.election.recv_coordinator)
         self.get('/testelection', callback =self.election.start_election)
+        #-------------------------------------------------
+        #Centralized Blackboard
+        self.post('/board/update/recv', callback=self.recv_update_board)
+        self.post('/coordinator/add', callback=self.coordinator_add)
+        self.post('/coordinator/modify/<param>/', callback=self.coordinator_modify)
 
-        self.do_parallel_task_after_delay(2, self.election.start_election,args=())
+        # 2 add modify : board -> 1(C) board ->  2,3
+
+
+        #self.do_parallel_task_after_delay(2, self.election.start_election,args=())
+
+        self.coordinator = '10.1.0.1'
 
     def do_parallel_task(self, method, args=None):
         # create a thread running a new task
@@ -137,8 +152,10 @@ class Server(Bottle):
             print("[ERROR] "+str(e))
 
     def add_entry_with_propagation(self):
-        self.add_entry()
-        self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms.dict)
+        #self.add_entry()
+        #self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms.dict)
+        URI = '/coordinator/add'
+        self.contact_another_server(self.coordinator, URI, req='POST', params_dict=request.forms.dict)
 
     def modify_entry(self, param):
         entry = request.params.get('entry')
@@ -150,8 +167,25 @@ class Server(Bottle):
         return
 
     def modify_entry_with_propagation(self, param):
+        #self.modify_entry(param)
+        #self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms.dict)
+        URI = '/coordinator/modify/{}/'
+        self.contact_another_server(self.coordinator, URI.format(param), req='POST', params_dict=request.forms.dict)
+
+    #Centralized Blackboard
+    def update_board(self):
+        self.propagate_to_all_servers(URI='/board/update/recv', req='POST',params_dict=self.blackboard.get_content())
+
+    def recv_update_board(self):
+        self.blackboard.set_content(request.forms)
+
+    def coordinator_add(self):
+        self.add_entry()
+        self.update_board()
+
+    def coordinator_modify(self,param):
         self.modify_entry(param)
-        self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms.dict)
+        self.update_board()
 
     # post on ('/')
     def post_index(self):
