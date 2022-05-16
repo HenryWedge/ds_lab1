@@ -73,12 +73,13 @@ class Server(Bottle):
         self.post('/coordinator/add', callback=self.coordinator_add)
         self.post('/coordinator/modify/<param>/', callback=self.coordinator_modify)
 
-        # 2 add modify : board -> 1(C) board ->  2,3
+        self.coordinator = None
+
+        self.do_parallel_task_after_delay(2, self.election.start_election, args=())
 
 
-        #self.do_parallel_task_after_delay(2, self.election.start_election,args=())
-
-        self.coordinator = '10.1.0.1'
+    def set_coordinator(self,c):
+        self.coordinator = c
 
     def do_parallel_task(self, method, args=None):
         # create a thread running a new task
@@ -124,9 +125,13 @@ class Server(Bottle):
 
 
     def propagate_to_all_servers(self, URI, req='POST', params_dict=None):
+        print('3---Debug')
+        print('Dict: ' + str(params_dict))
+        print('URI: ' + URI)
         for srv_ip in self.servers_list:
             if srv_ip != self.ip: # don't propagate to yourself
                 self.do_parallel_task(method=self.contact_another_server,args=(srv_ip, URI, req, params_dict))
+        print('4---Debug')
 
 
     # route to ('/')
@@ -155,7 +160,14 @@ class Server(Bottle):
         #self.add_entry()
         #self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms.dict)
         URI = '/coordinator/add'
-        self.contact_another_server(self.coordinator, URI, req='POST', params_dict=request.forms.dict)
+        form = request.forms.dict
+        success = self.contact_another_server(self.coordinator, URI, req='POST', params_dict=form)
+        print('--------- Success: ' + str(success))
+
+        if not(success):
+            self.recursive_reelection(URI,form=form)
+
+
 
     def modify_entry(self, param):
         entry = request.params.get('entry')
@@ -164,17 +176,23 @@ class Server(Bottle):
 
         if (isModify):
             self.blackboard.modify_content(entry, entry)
-        return
 
     def modify_entry_with_propagation(self, param):
         #self.modify_entry(param)
         #self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms.dict)
         URI = '/coordinator/modify/{}/'
-        self.contact_another_server(self.coordinator, URI.format(param), req='POST', params_dict=request.forms.dict)
+        form = request.forms.dict
+        success = self.contact_another_server(self.coordinator, URI.format(param), req='POST', params_dict=form)
+        print('--------- Success: ' + str(success))
+        if not(success):
+            self.recursive_reelection(URI,param = param,form = form)
 
     #Centralized Blackboard
     def update_board(self):
+        print('1---Debug')
+        print('BlackbordContent: '+ str(self.blackboard.get_content()))
         self.propagate_to_all_servers(URI='/board/update/recv', req='POST',params_dict=self.blackboard.get_content())
+        print('5---Debug')
 
     def recv_update_board(self):
         self.blackboard.set_content(request.forms)
@@ -186,6 +204,20 @@ class Server(Bottle):
     def coordinator_modify(self,param):
         self.modify_entry(param)
         self.update_board()
+
+    def recursive_reelection(self,URI,param = None, form = None):
+        self.election.start_election()
+        print('Data' + ' | ' + URI + ' | ' + str(param) + ' | ' + str(form) )
+        self.coordinator = None
+        while self.coordinator==None:
+            time.sleep(1)
+        if param == None:
+            success = self.contact_another_server(self.coordinator, URI, req='POST', params_dict=form)
+        else:
+            success = self.contact_another_server(self.coordinator, URI.format(param), req='POST', params_dict=form)
+        print('--------- Success: ' + str(success))
+        #if not(success):
+            #self.recursive_reelection(URI,param)
 
     # post on ('/')
     def post_index(self):
@@ -217,6 +249,9 @@ class Election():
 
         self.lock = Lock()
         self.coordinator_counter = 0
+
+    def get_coordinator(self):
+        return self.current_leader
 
     def start_election(self):
         time.sleep(0.1)
@@ -294,6 +329,8 @@ class Election():
 
     def reset_election(self,ip):
         self.current_leader = ip
+        self.server.set_coordinator(ip)
+
         self.got_answer = False
         self.coordinator_counter = 0
         print(self.server_Dict)
