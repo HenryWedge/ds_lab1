@@ -248,6 +248,7 @@ class Election():
         time.sleep(2)
         with self.lock:
             if not self.got_answer and counter == self.coordinator_counter:
+                self.coordinator_counter += 1
                 self.server.do_parallel_task(method=self.coordinator, args=())
 
     def answer(self):
