@@ -211,14 +211,15 @@ class Election():
         self.server_ip = server_ip
         self.server_list = server_list
         self.server_id = server_id
-        self.leader_attribute = random.randint(0, 20)
+        self.coordinator_attribute = random.randint(0, 20)
         self.server_Dict = dict()
 
-        self.current_leader = None
+        self.current_coordinator = None
         self.got_answer = False
 
         self.lock = Lock()
         self.coordinator_counter = 0
+
 
     def start_election(self):
         time.sleep(0.1)
@@ -228,14 +229,14 @@ class Election():
         if self.election_timer == 0:
             self.election_timer = time.time()
 
-        data = {'server_ip': self.server_ip, 'leader_attribute': self.leader_attribute, 'server_id': self.server_id}
+        data = {'server_ip': self.server_ip, 'coordinator_attribute': self.coordinator_attribute, 'server_id': self.server_id}
 
         with self.lock:
             self.coordinator_counter += 1
 
         for server in self.server_list:
             if server in self.server_Dict:
-                if self.server_Dict[server] > self.leader_attribute:
+                if self.server_Dict[server] >= self.coordinator_attribute:
                     time.sleep(0.175)
                     self.server.do_parallel_task(method=self.server.contact_another_server, args=(server, '/election/election', 'POST', data))
             elif not(server == self.server_ip):
@@ -253,7 +254,7 @@ class Election():
 
     def answer(self):
         ip = request.forms.get('server_ip')
-        attribute = request.forms.get('leader_attribute')
+        attribute = request.forms.get('coordinator_attribute')
         id = request.forms.get('server_id')
 
         data = {'take-over': self.server_ip}
@@ -262,7 +263,7 @@ class Election():
             self.coordinator_counter += 1
 
         self.server_Dict[ip] = int(attribute)
-        if int(attribute) < self.leader_attribute or (int(attribute) == self.leader_attribute and id < self.server_id):
+        if int(attribute) < self.coordinator_attribute or (int(attribute) == self.coordinator_attribute and int(id) < self.server_id):
             time.sleep(0.175)
             self.server.do_parallel_task(method=self.server.contact_another_server, args=(ip, '/election/answer', 'POST', data))
             self.start_election()
@@ -272,23 +273,23 @@ class Election():
 
     def coordinator(self):
 
-        self.current_leader = self.server_ip
+        self.current_coordinator = self.server_ip
         uri = '/election/coordinator'
         data = {'coordinator': self.server_ip}
 
-        print('-------- Coordinator (attribute: {})-----------'.format(str(self.leader_attribute)))
+        print('-------- Coordinator (attribute: {})-----------'.format(str(self.coordinator_attribute)))
         self.server.propagate_to_all_servers(uri, req='POST', params_dict=data)
         print("Election ended in: {} seconds".format(str((time.time() - self.election_timer))))
         self.reset_election(self.server_ip)
 
     def recv_coordinator(self):
-        leader = request.forms.get('coordinator')
-        print('-------- Worker -----------' + str(self.leader_attribute))
-        print('-------- New Coordinator is {} ------'.format(str(leader)))
-        self.reset_election(leader)
+        coordinator = request.forms.get('coordinator')
+        print('-------- Worker -----------' + str(self.coordinator_attribute))
+        print('-------- New Coordinator is {} ------'.format(str(coordinator)))
+        self.reset_election(coordinator)
 
     def reset_election(self, ip):
-        self.current_leader = ip
+        self.current_coordinator = ip
         self.server.set_coordinator(ip)
         self.got_answer = False
         self.coordinator_counter = 0
