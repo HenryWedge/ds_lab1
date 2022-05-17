@@ -174,16 +174,17 @@ class Server(Bottle):
 
     def update_board(self):
         self.propagate_to_all_servers(URI='/board/update/recv', req='POST', params_dict=self.blackboard.get_content())
-
+    #post on '/board/update/recv'
     def recv_update_board(self):
         b = request.forms.dict
         b = {k: b[k][0] for k in b}
         self.blackboard.set_content(b)
 
+    #post on '/coordinator/add',
     def coordinator_add(self):
         self.add_entry()
         self.update_board()
-
+    #post on '/coordinator/modify/<param>/',
     def coordinator_modify(self, param):
         self.modify_entry(param)
         self.update_board()
@@ -252,11 +253,11 @@ class Election():
                 self.coordinator_counter += 1
                 self.server.do_parallel_task(method=self.coordinator, args=())
 
+    #post on '/election/election'
     def answer(self):
         ip = request.forms.get('server_ip')
         attribute = request.forms.get('coordinator_attribute')
         id = request.forms.get('server_id')
-
         data = {'take-over': self.server_ip}
 
         with self.lock:
@@ -268,11 +269,11 @@ class Election():
             self.server.do_parallel_task(method=self.server.contact_another_server, args=(ip, '/election/answer', 'POST', data))
             self.start_election()
 
+    #post on '/election/answer'
     def recv_answer(self):
         self.got_answer = True
 
     def coordinator(self):
-
         self.current_coordinator = self.server_ip
         uri = '/election/coordinator'
         data = {'coordinator': self.server_ip}
@@ -288,6 +289,7 @@ class Election():
         print('-------- New Coordinator is {} ------'.format(str(coordinator)))
         self.reset_election(coordinator)
 
+    #post on '/election/coordinator'
     def reset_election(self, ip):
         self.current_coordinator = ip
         self.server.set_coordinator(ip)
