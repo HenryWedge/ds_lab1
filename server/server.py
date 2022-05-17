@@ -44,7 +44,7 @@ class Server(Bottle):
     def __init__(self, ID, IP, servers_list):
         super(Server, self).__init__()
         self.blackboard = Blackboard()
-        self.election = Election(self,IP,ID,servers_list)
+        self.election = Election(self, IP, ID, servers_list)
         self.id = int(ID)
         self.ip = str(IP)
         self.servers_list = servers_list
@@ -64,10 +64,10 @@ class Server(Bottle):
 
         #-------------------------------------------------
         #Election
-        self.post('/election/election',callback=self.election.answer)
-        self.post('/election/answer',callback=self.election.recv_answer)
-        self.post('/election/coordinator',callback=self.election.recv_coordinator)
-        self.get('/testelection', callback =self.election.start_election)
+        self.post('/election/election', callback=self.election.answer)
+        self.post('/election/answer', callback=self.election.recv_answer)
+        self.post('/election/coordinator', callback=self.election.recv_coordinator)
+        self.get('/testelection', callback=self.election.start_election)
         #-------------------------------------------------
         #Centralized Blackboard
         self.post('/board/update/recv', callback=self.recv_update_board)
@@ -78,7 +78,7 @@ class Server(Bottle):
         self.coordinator = None
         self.do_parallel_task_after_delay(2, self.election.start_election, args=())
 
-    def set_coordinator(self,c):
+    def set_coordinator(self, c):
         self.coordinator = c
 
     def do_parallel_task(self, method, args=None):
@@ -90,7 +90,6 @@ class Server(Bottle):
         thread.daemon = True
         thread.start()
 
-
     def do_parallel_task_after_delay(self, delay, method, args=None):
         # create a thread, and run a task after a specified delay
         # Usage example: self.do_parallel_task_after_delay(10, self.start_election, args=(,))
@@ -99,7 +98,6 @@ class Server(Bottle):
                         args=(delay, method, args))
         thread.daemon = True
         thread.start()
-
 
     def _wrapper_delay_and_execute(self, delay, method, args):
         time.sleep(delay) # in sec
@@ -121,12 +119,10 @@ class Server(Bottle):
             print("[ERROR] "+str(e))
         return success
 
-
     def propagate_to_all_servers(self, URI, req='POST', params_dict=None):
         for srv_ip in self.servers_list:
             if srv_ip != self.ip: # don't propagate to yourself
                 self.do_parallel_task(method=self.contact_another_server,args=(srv_ip, URI, req, params_dict))
-
 
     # route to ('/')
     def index(self):
@@ -143,8 +139,6 @@ class Server(Bottle):
                                                             self.ip),
                         board_dict=self.blackboard.get_content().items())
 
-
-
     def add_entry(self):
         try:
             new_entry = request.forms.get('entry')
@@ -153,31 +147,30 @@ class Server(Bottle):
             print("[ERROR] "+str(e))
 
     def add_entry_with_propagation(self):
-        URI = '/coordinator/add'
-        self.propagtion_with_failure(URI)
+        self.propagation_with_failure('/coordinator/add')
 
     def modify_entry(self, param):
         entry = request.params.get('entry')
-        isModify = request.params.get('delete') == '0'
+        is_modify = request.params.get('delete') == '0'
         self.blackboard.delete_content(param)
-        if (isModify):
+        if is_modify:
             self.blackboard.modify_content(entry, entry)
 
-    def propagtion_with_failure(self, uri: str):
+    def propagation_with_failure(self, uri: str):
         forms = request.forms.dict
         success = self.contact_another_server(self.coordinator, uri, req='POST', params_dict=forms)
-        if not(success):
+        if not success:
             self.coordinator = None
             self.do_parallel_task(self.election.start_election, args=())
             while self.coordinator==None:
                 time.sleep(1)
             success = self.contact_another_server(self.coordinator, uri, req='POST', params_dict=forms)
-            if not(success):
-                self.propagtion_with_failure(uri)
+            if not success:
+                self.propagation_with_failure(uri)
 
 
     def modify_entry_with_propagation(self, param):
-        self.propagtion_with_failure('/coordinator/modify/{}/'.format(param))
+        self.propagation_with_failure('/coordinator/modify/{}/'.format(param))
 
     def update_board(self):
         self.propagate_to_all_servers(URI='/board/update/recv', req='POST', params_dict=self.blackboard.get_content())
@@ -232,28 +225,29 @@ class Election():
         self.server.do_parallel_task(method=self.election, args=())
 
     def election(self):
-        self.election_timer = time.time()
+        if self.election_timer == 0:
+            self.election_timer = time.time()
+
         data = {'server_ip': self.server_ip, 'leader_attribute': self.leader_attribute, 'server_id': self.server_id}
 
         with self.lock:
             self.coordinator_counter += 1
 
-        for s in self.server_list:
-            if s in self.server_Dict:
-                if self.server_Dict[s] > self.leader_attribute:
+        for server in self.server_list:
+            if server in self.server_Dict:
+                if self.server_Dict[server] > self.leader_attribute:
                     time.sleep(0.175)
-                    self.server.do_parallel_task(method=self.server.contact_another_server, args=(s, '/election/election', 'POST', data))
-            elif not(s == self.server_ip):
+                    self.server.do_parallel_task(method=self.server.contact_another_server, args=(server, '/election/election', 'POST', data))
+            elif not(server == self.server_ip):
                 time.sleep(0.175)
-                self.server.do_parallel_task(method=self.server.contact_another_server, args=(s, '/election/election', 'POST', data))
+                self.server.do_parallel_task(method=self.server.contact_another_server, args=(server, '/election/election', 'POST', data))
 
-        counter = 0
         with self.lock:
             self.coordinator_counter += 1
             counter = self.coordinator_counter
         time.sleep(2)
         with self.lock:
-            if not(self.got_answer) and counter == self.coordinator_counter:
+            if not self.got_answer and counter == self.coordinator_counter:
                 self.server.do_parallel_task(method=self.coordinator, args=())
 
     def answer(self):
@@ -325,7 +319,7 @@ def main():
         bottle.run(app = application,
                     server = 'paste',
                     host = server_ip,
-                    port = PORT)
+                    port=PORT)
     except Exception as e:
         print("[ERROR] "+str(e))
 
