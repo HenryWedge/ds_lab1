@@ -33,14 +33,6 @@ class Blackboard():
         with self.lock:
             self.content.pop(delete_id)
         return
-# ------------------------------------------------------------------------------------------------------
-class Election():
-    def __init__(self,server_id,servers_list):
-        self.server_id = server_id
-        self.leaderelection_attribute = self.server_id # TODO:  Should be random between [0,20]
-        self.serverDict = dict()
-        self.current_leader = -1
-        self.leader = false
 
 
 # ------------------------------------------------------------------------------------------------------
