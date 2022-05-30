@@ -44,6 +44,11 @@ class Server(Bottle):
         self.id = int(ID)
         self.ip = str(IP)
         self.servers_list = servers_list
+
+        self.clock = 0
+        self.lock = Lock()
+
+
         # list all REST URIs
         # if you add new URIs to the server, you need to add them here
         self.route('/', callback=self.index)
@@ -58,7 +63,27 @@ class Server(Bottle):
         # You can have variables in the URI, here's an example
         # self.post('/board/<element_id:int>/', callback=self.post_board) where post_board takes an argument (integer) called element_id
 
+#-------------------------------------------------
+#Clock
 
+    def update_Clock(self,new_Clock_value):
+        with self.lock:
+            self.clock = new_Clock_value + 1
+        return
+
+    def get_and_update_with_own_or_other_servers_clock(self):
+        server_clock = None
+        try:
+            server_clock = request.forms.get('clock')
+        except Exception as e:
+            print("[ERROR] "+str(e))
+        if(server_clock == None):
+            self.update_Clock(self.clock)
+        else: self.update_Clock(int(server_clock))
+        print('-----current clock value:  ' + str(self.clock)) #DEBUG
+
+
+#-------------------------------------------------
     def do_parallel_task(self, method, args=None):
         # create a thread running a new task
         # Usage example: self.do_parallel_task(self.contact_another_server, args=("10.1.0.2", "/index", "POST", params_dict))
@@ -127,12 +152,16 @@ class Server(Bottle):
         try:
             new_entry = request.forms.get('entry')
             self.blackboard.modify_content(new_entry, new_entry)
+            self.get_and_update_with_own_or_other_servers_clock()
         except Exception as e:
             print("[ERROR] "+str(e))
 
     def add_entry_with_propagation(self):
         self.add_entry()
-        self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms)
+        entry = request.forms
+        with self.lock:
+            entry['clock'] = self.clock
+        self.propagate_to_all_servers(URI='/board', req='POST', params_dict=entry)
 
     def modify_entry(self, param):
         entry = request.params.get('entry')
@@ -141,11 +170,14 @@ class Server(Bottle):
 
         if (isModify):
             self.blackboard.modify_content(entry, entry)
-        return
+        self.get_and_update_with_own_or_other_servers_clock()
 
     def modify_entry_with_propagation(self, param):
         self.modify_entry(param)
-        self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms)
+        entry = request.forms
+        with self.lock:
+            entry['clock'] = self.clock
+        self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=entry)
 
     # post on ('/')
     def post_index(self):
