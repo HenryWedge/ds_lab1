@@ -17,12 +17,18 @@ class Blackboard():
         self.content = dict()
         self.lock = Lock() # use lock when you modify the content
 
-
     def get_content(self):
         with self.lock:
             cnt = self.content
         return cnt
 
+    def get_content_as_list(self):
+        result_list = []
+        with self.lock:
+            for k, v in self.content.items():
+                result_list.append((k, v))
+            print("result list: {}".format(result_list))
+        return result_list
 
     def modify_content(self, new_id, new_entry):
         with self.lock:
@@ -34,6 +40,10 @@ class Blackboard():
             self.content.pop(delete_id)
         return
 
+    def set_content(self, content: dict):
+        with self.lock:
+            self.content = content
+        return
 
 # ------------------------------------------------------------------------------------------------------
 class Server(Bottle):
@@ -66,7 +76,7 @@ class Server(Bottle):
 #-------------------------------------------------
 #Clock
 
-    def update_Clock(self,new_Clock_value):
+    def update_clock(self, new_Clock_value):
         with self.lock:
             self.clock = new_Clock_value + 1
         return
@@ -77,9 +87,10 @@ class Server(Bottle):
             server_clock = request.forms.get('clock')
         except Exception as e:
             print("[ERROR] "+str(e))
-        if(server_clock == None):
-            self.update_Clock(self.clock)
-        else: self.update_Clock(int(server_clock))
+        if server_clock is None:
+            self.update_clock(self.clock)
+        else:
+            self.update_clock(int(server_clock))
         print('-----current clock value:  ' + str(self.clock)) #DEBUG
 
 
@@ -149,19 +160,33 @@ class Server(Bottle):
                         board_dict=self.blackboard.get_content().items())
 
     def add_entry(self):
-        try:
-            new_entry = request.forms.get('entry')
-            self.blackboard.modify_content(new_entry, new_entry)
-            self.get_and_update_with_own_or_other_servers_clock()
-        except Exception as e:
-            print("[ERROR] "+str(e))
+        clock = request.forms.get('clock')
+        print("####DEBUG#### \n  My clock: {} \n  Clock from request {}".format(self.clock, clock))
+        if int(clock) > self.clock:
+            self.clock = int(clock)
+
+            dictionary = dict()
+            print("type: {}".format(type(request.forms)))
+            for entry in request.forms:
+                if entry != 'clock' and entry != 'entry':
+                    dictionary[entry] = request.forms.get(str(entry))
+
+            self.blackboard.set_content(dictionary)
+
 
     def add_entry_with_propagation(self):
-        self.add_entry()
-        entry = request.forms
-        with self.lock:
-            entry['clock'] = self.clock
-        self.propagate_to_all_servers(URI='/board', req='POST', params_dict=entry)
+        self.clock = self.clock + 1
+        request_form = request.forms
+        new_entry = request_form.get('entry')
+        self.blackboard.modify_content(new_entry=new_entry, new_id=new_entry)
+
+        request_form['clock'] = self.clock
+        print("Blackboard content: {}".format(self.blackboard.get_content()))
+
+        for k, v in self.blackboard.get_content().items():
+            request_form[k] = v
+
+        self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request_form)
 
     def modify_entry(self, param):
         entry = request.params.get('entry')

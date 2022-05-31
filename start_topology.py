@@ -27,7 +27,7 @@ class DistributedTopology( Topo ):
         # internet configuration parameters
         switch_to_switch_rate = 1000 # Mbps
         switch_to_switch_losses = 0.00001 # 1e-5 PER
-        switch_to_switch_delay = 500 # ms, delay = RTT/2
+        switch_to_switch_delay = 50 # ms, delay = RTT/2
         # arrays
         sw = []
         srv = []
