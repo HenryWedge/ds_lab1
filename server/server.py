@@ -1,6 +1,7 @@
 # coding=utf-8
 import argparse
 import json
+import random
 import sys
 from threading import Lock, Thread
 import time
@@ -64,10 +65,11 @@ class Server(Bottle):
         self.route('/', callback=self.index)
         self.get('/board', callback=self.get_board)
         self.post('/board/propagate', callback=self.add_entry_with_propagation)
-        self.post('/board', callback=self.add_entry)
+        #self.post('/board', callback=self.add_entry)
         self.post('/board/<param>/propagate', callback=self.modify_entry_with_propagation)
-        self.post('/board/<param>/', callback=self.modify_entry)
+        #self.post('/board/<param>/', callback=self.modify_entry)
         self.post('/', callback=self.post_index)
+        self.post('/update', callback=self.update_blackboard_content)
         # we give access to the templates elements
         self.get('/templates/<filename:path>', callback=self.get_template)
         # You can have variables in the URI, here's an example
@@ -141,7 +143,7 @@ class Server(Bottle):
     def propagate_to_all_servers(self, URI, req='POST', params_dict=None):
         for srv_ip in self.servers_list:
             if srv_ip != self.ip: # don't propagate to yourself
-                self.do_parallel_task(method=self.contact_another_server,args=(srv_ip, URI, req, params_dict))
+                self.do_parallel_task(method=self.contact_another_server, args=(srv_ip, URI, req, params_dict))
 
 
     # route to ('/')
@@ -159,26 +161,22 @@ class Server(Bottle):
                                                             self.ip),
                         board_dict=self.blackboard.get_content().items())
 
-    def add_entry(self):
-        clock = request.forms.get('clock')
+    def update_blackboard_content(self):
+        clock = int(request.forms.get('clock'))
         print("####DEBUG#### \n  My clock: {} \n  Clock from request {}".format(self.clock, clock))
-        if int(clock) > self.clock:
-            self.clock = int(clock)
-
+        if clock > self.clock:
+            self.clock = clock
             dictionary = dict()
-            print("type: {}".format(type(request.forms)))
             for entry in request.forms:
-                if entry != 'clock' and entry != 'entry':
+                if entry not in ['clock', 'entry', 'delete']:
                     dictionary[entry] = request.forms.get(str(entry))
-
             self.blackboard.set_content(dictionary)
-
 
     def add_entry_with_propagation(self):
         self.clock = self.clock + 1
         request_form = request.forms
         new_entry = request_form.get('entry')
-        self.blackboard.modify_content(new_entry=new_entry, new_id=new_entry)
+        self.blackboard.modify_content(new_entry=new_entry, new_id=random.randint(0, 9999))
 
         request_form['clock'] = self.clock
         print("Blackboard content: {}".format(self.blackboard.get_content()))
@@ -186,23 +184,26 @@ class Server(Bottle):
         for k, v in self.blackboard.get_content().items():
             request_form[k] = v
 
-        self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request_form)
+        self.propagate_to_all_servers(URI='/update', req='POST', params_dict=request_form)
 
-    def modify_entry(self, param):
-        entry = request.params.get('entry')
-        isModify = request.params.get('delete') == '0'
-        self.blackboard.delete_content(param)
-
-        if (isModify):
-            self.blackboard.modify_content(entry, entry)
-        self.get_and_update_with_own_or_other_servers_clock()
 
     def modify_entry_with_propagation(self, param):
-        self.modify_entry(param)
-        entry = request.forms
-        with self.lock:
-            entry['clock'] = self.clock
-        self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=entry)
+        self.clock = self.clock + 1
+        entry = request.params.get('entry')
+
+        self.blackboard.delete_content(param)
+
+        if request.params.get('delete') == '0':
+            self.blackboard.modify_content(param, entry)
+
+        request_form = request.forms
+        request_form['clock'] = self.clock
+        print("Blackboard content: {}".format(self.blackboard.get_content()))
+
+        for k, v in self.blackboard.get_content().items():
+            request_form[k] = v
+
+        self.propagate_to_all_servers(URI='/update', req='POST', params_dict=request_form)
 
     # post on ('/')
     def post_index(self):
