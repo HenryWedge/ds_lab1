@@ -9,10 +9,12 @@
                             <div class="card-body">
                                 <input type="text" name="id" value="ID" readonly>
                                 <input type="text" name="entry" value="Entry" size="70%%" readonly>
-                                % for board_entry, board_element in board_dict:
-                                    <form class="entryform" target="noreload" method="post" action="/board/{{board_entry}}/propagate">
-                                        <input type="text" name="id" value="{{board_entry}}" readonly disabled> <!-- disabled field won’t be sent -->
-                                        <input type="text" name="entry" value="{{board_element}}" size="70%%">
+                                <input type="text" name="clock" value="Clock" size="20%%" readonly>
+                                % for entry in board_dict:
+                                    <form class="entryform" target="noreload" method="post" action="/board/{{entry.id}}/propagate">
+                                        <input type="text" name="id" value="{{entry.id}}" readonly disabled> <!-- disabled field won’t be sent -->
+                                        <input type="text" name="entry" value="{{entry.entry}}" size="70%%">
+                                        <input type="text" name="clock" value="{{entry.clock}}" readonly disabled>
                                         <button type="submit" name="delete" value="0">Modify</button>
                                         <button type="submit" name="delete" value="1">X</button>
                                     </form>
