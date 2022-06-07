@@ -96,10 +96,13 @@ class Server(Bottle):
 
     # route to ('/')
     def index(self):
+        board = []
+        for k, v in self.blackboard.get_content().items():
+            board.append(Entry(k, v.entry, v.clock))
         return template('server/templates/index.tpl',
                         board_title='Server {} ({})'.format(self.id,
                                                             self.ip),
-                        board_dict=self.blackboard.get_content().items(),
+                        board_dict=board,
                         members_name_string='Julius Rüder and Hendrik Reiter')
 
     # get on ('/board')
