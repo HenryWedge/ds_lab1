@@ -51,8 +51,15 @@ class Server(Bottle):
         self.id = int(ID)
         self.ip = str(IP)
         self.servers_list = servers_list
+
         self.private_key = rsa.generate_private_key(public_exponent=65537, key_size=512, backend=default_backend())
         self.public_key = self.private_key.public_key()
+        self.server_id_public_key_dictionary = dict()
+
+        time.sleep(2)
+        self.pem = self.format_public_key()
+        self.send_public_key()
+
         self.route('/', callback=self.index)
         self.get('/board', callback=self.get_board)
         self.post('/board/propagate', callback=self.add_entry_with_propagation)
@@ -61,19 +68,20 @@ class Server(Bottle):
         self.post('/board/<param>/', callback=self.modify_entry)
         self.post('/', callback=self.post_index)
         self.get('/templates/<filename:path>', callback=self.get_template)
-        self.get('/pem', callback=self.get_pem)
-        self.signature = self.sign("message")
+        self.post('/pk/receive', callback=self.receive_public_key)
 
-        # TODO add wait time
-        self.pem = base64.b64encode(self.public_key.public_bytes(encoding=serialization.Encoding.PEM,
-                                                                 format=serialization.PublicFormat.SubjectPublicKeyInfo))
+    def format_public_key(self):
+        return base64.b64encode(self.public_key.public_bytes(encoding=serialization.Encoding.PEM,
+                                                             format=serialization.PublicFormat.SubjectPublicKeyInfo))
 
-        # self.propagate_to_all_servers()
+    def send_public_key(self):
+        print("start_send")
+        send_public_key_request = dict(data={"ip": self.ip, "public_key": self.pem})
+        self.propagate_to_all_servers(URI='/pk/receive', req='POST', params_dict=send_public_key_request)
 
-    def get_pem(self):
-        print(self.verify(self.pem, "message", self.signature))
-        for i in range(100):
-            print(self.hash("Wir sind toll :D" + str(i)) + "\n")
+    def receive_public_key(self):
+        print("receive_public_key")
+        print(request.json)
 
     def sign(self, message):
         return self.private_key.sign(base64.b64encode(message.encode()),
@@ -84,8 +92,9 @@ class Server(Bottle):
         print(message)
         public_key = serialization.load_pem_public_key(base64.b64decode(public_key), backend=default_backend())
         try:
-            public_key.verify(signature, base64.b64encode(message.encode()), padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
-                                                              salt_length=padding.PSS.MAX_LENGTH),
+            public_key.verify(signature, base64.b64encode(message.encode()),
+                              padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
+                                          salt_length=padding.PSS.MAX_LENGTH),
                               hashes.SHA256())
         except InvalidSignature:
             return False
@@ -117,7 +126,7 @@ class Server(Bottle):
         try:
             if 'POST' in req:
                 res = requests.post('http://{}{}'.format(srv_ip, URI),
-                                    data=params_dict.dict)
+                                    data=params_dict)
             elif 'GET' in req:
                 res = requests.get('http://{}{}'.format(srv_ip, URI))
             # result can be accessed res.json()
@@ -156,7 +165,7 @@ class Server(Bottle):
 
     def add_entry_with_propagation(self):
         self.add_entry()
-        self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms)
+        self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms.dict)
 
     def modify_entry(self, param):
         entry = request.params.get('entry')
@@ -169,7 +178,7 @@ class Server(Bottle):
 
     def modify_entry_with_propagation(self, param):
         self.modify_entry(param)
-        self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms)
+        self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms.dict)
 
     # post on ('/')
     def post_index(self):
