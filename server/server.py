@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 import requests
+import json
 import base64
 
 
@@ -56,7 +57,7 @@ class Server(Bottle):
         self.public_key = self.private_key.public_key()
         self.server_id_public_key_dictionary = dict()
 
-        time.sleep(2)
+        time.sleep(3)
         self.pem = self.format_public_key()
         self.send_public_key()
 
@@ -76,12 +77,21 @@ class Server(Bottle):
 
     def send_public_key(self):
         print("start_send")
-        send_public_key_request = dict(data={"ip": self.ip, "public_key": self.pem})
-        self.propagate_to_all_servers(URI='/pk/receive', req='POST', params_dict=send_public_key_request)
+        self.propagate_to_all_servers('/pk/receive', self.to_json({"ip": self.ip, "public_key": "Bla"}), req='POST')
 
     def receive_public_key(self):
         print("receive_public_key")
-        print(request.json)
+        answer = self.from_json(request.forms)
+        print(answer['ip'])
+        self.server_id_public_key_dictionary[answer['ip']] = answer['public_key']
+
+    def to_json(self, send_object):
+        json_obj = dict()
+        json_obj['data'] = json.dumps(send_object)
+        return json_obj
+
+    def from_json(self, forms):
+        return json.loads(forms['data'])
 
     def sign(self, message):
         return self.private_key.sign(base64.b64encode(message.encode()),
@@ -121,12 +131,13 @@ class Server(Bottle):
         time.sleep(delay)  # in sec
         method(*args)
 
-    def contact_another_server(self, srv_ip, URI, req='POST', params_dict=None):
+    def contact_another_server(self, srv_ip, URI, params_dict, req='POST'):
         success = False
+        # print("Params dict: {}: ".format(params_dict))
         try:
             if 'POST' in req:
                 res = requests.post('http://{}{}'.format(srv_ip, URI),
-                                    data=params_dict)
+                                    data=params_dict, json=params_dict)
             elif 'GET' in req:
                 res = requests.get('http://{}{}'.format(srv_ip, URI))
             # result can be accessed res.json()
@@ -136,10 +147,10 @@ class Server(Bottle):
             print("[ERROR] " + str(e))
         return success
 
-    def propagate_to_all_servers(self, URI, req='POST', params_dict=None):
+    def propagate_to_all_servers(self, URI, params_dict, req='POST'):
         for srv_ip in self.servers_list:
             if srv_ip != self.ip:  # don't propagate to yourself
-                self.do_parallel_task(method=self.contact_another_server, args=(srv_ip, URI, req, params_dict))
+                self.do_parallel_task(method=self.contact_another_server, args=(srv_ip, URI, params_dict, req))
 
     # route to ('/')
     def index(self):
@@ -165,7 +176,7 @@ class Server(Bottle):
 
     def add_entry_with_propagation(self):
         self.add_entry()
-        self.propagate_to_all_servers(URI='/board', req='POST', params_dict=request.forms.dict)
+        self.propagate_to_all_servers('/board', request.forms.dict, req='POST')
 
     def modify_entry(self, param):
         entry = request.params.get('entry')
@@ -178,7 +189,7 @@ class Server(Bottle):
 
     def modify_entry_with_propagation(self, param):
         self.modify_entry(param)
-        self.propagate_to_all_servers(URI='/board/{}/'.format(param), req='POST', params_dict=request.forms.dict)
+        self.propagate_to_all_servers('/board/{}/'.format(param), request.forms.dict, req='POST')
 
     # post on ('/')
     def post_index(self):
