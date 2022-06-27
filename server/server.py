@@ -1,6 +1,7 @@
 # coding=utf-8
 import argparse
 import random
+import string
 from threading import Lock, Thread
 import time
 import bottle
@@ -32,7 +33,7 @@ def format_public_key(public_key):
                                                     format=serialization.PublicFormat.SubjectPublicKeyInfo))
 
 
-def sign(private_key, message):
+def sign(private_key, message: string):
     return private_key.sign(base64.b64encode(message.encode()),
                             padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
                                         salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256())
@@ -58,10 +59,9 @@ def hash_string(string):
 
 
 class Transaction():
-    def __init__(self, diploma, issuer_party_public_key, receiver_party_public_key, signature):
+    def __init__(self, diploma, issuer_party_public_key, signature):
         self.diploma = diploma
         self.issuer_party_public_key = issuer_party_public_key
-        self.receiver_party_public_key = receiver_party_public_key
         self.signature = signature
 
     def to_string(self):
@@ -71,17 +71,18 @@ class Transaction():
 class Block():
     def __init__(self, previous_block_hash):
         self.previous_block_hash = previous_block_hash
-        self.transactions = []
+        #self.transactions = dict()
+        self.transaction = None #Transaction(None, "A", "A")
         self.nonce = 0
 
-    def add_transaction(self, transaction):
-        self.transactions.append(transaction)
+    def add_transaction(self, tx_id, transaction):
+        self.transaction = transaction
 
     def to_string(self):
+        self.transaction.to_string()
         return json.dumps(self.__dict__)
 
     def is_valid(self):
-        time.sleep(0.1)
         block_hash = hash_string(self.to_string())
         print("BlockHash: {}".format(block_hash))
         return block_hash[0] == str(0) and block_hash[1] == str(0)
@@ -97,6 +98,9 @@ class Diploma():
         self.name = name
         self.subject = subject
         self.grade = grade
+
+    def to_string(self):
+        return json.dumps(self.__dict__)
 
 
 class Blackboard():
@@ -151,17 +155,25 @@ class Server(Bottle):
         self.post('/', callback=self.post_index)
         self.get('/templates/<filename:path>', callback=self.get_template)
         self.post('/pk/receive', callback=self.receive_public_key)
+        self.post('/block/new', callback=self.receive_block)
+
+    def receive_block(self):
+        new_block = from_json(request.forms)
+        for transaction in new_block['transactions']:
+            self.blackboard.modify_content(transaction.tx_id, transaction.diploma)
 
     def create_new_block(self):
         print("Start mining")
         finished = False
         while not finished:
-            #time.sleep(500)
+            time.sleep(0.1)
             nonce = random.randint(0, 999999)
             finished = self.last_block.hash_block_with_nonce(nonce)
 
+        self.last_block.previous_block_hash = hash_string(self.last_block.to_string())
         print(self.last_block.to_string())
 
+        # self.create_new_block()
 
     def send_public_key(self):
         print("start_send")
@@ -235,6 +247,15 @@ class Server(Bottle):
             print("[ERROR] " + str(e))
 
     def add_entry_with_propagation(self):
+        entry_name = request.forms.get('name')
+        entry_subject = request.forms.get('subject')
+        entry_grade = request.forms.get('grade')
+        diploma = Diploma(entry_name, entry_subject, entry_grade)
+
+        self.last_block.add_transaction(
+            random.randint(0, 9999),
+            Transaction(diploma,
+                        format_public_key(self.public_key), sign(self.private_key, diploma.to_string())))
         self.add_entry()
         self.propagate_to_all_servers('/board', request.forms.dict, req='POST')
 
