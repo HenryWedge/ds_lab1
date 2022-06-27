@@ -1,12 +1,10 @@
 # coding=utf-8
 import argparse
-import json
-import sys
+import random
 from threading import Lock, Thread
 import time
-import traceback
 import bottle
-from bottle import Bottle, request, template, run, static_file
+from bottle import Bottle, request, template, static_file
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
@@ -19,6 +17,85 @@ import base64
 
 
 # ------------------------------------------------------------------------------------------------------
+def to_json(send_object):
+    json_obj = dict()
+    json_obj['data'] = json.dumps(send_object)
+    return json_obj
+
+
+def from_json(forms):
+    return json.loads(forms['data'])
+
+
+def format_public_key(public_key):
+    return base64.b64encode(public_key.public_bytes(encoding=serialization.Encoding.PEM,
+                                                    format=serialization.PublicFormat.SubjectPublicKeyInfo))
+
+
+def sign(private_key, message):
+    return private_key.sign(base64.b64encode(message.encode()),
+                            padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
+                                        salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256())
+
+
+def verify(public_key, message, signature):
+    print(message)
+    public_key = serialization.load_pem_public_key(base64.b64decode(public_key), backend=default_backend())
+    try:
+        public_key.verify(signature, base64.b64encode(message.encode()),
+                          padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
+                                      salt_length=padding.PSS.MAX_LENGTH),
+                          hashes.SHA256())
+    except InvalidSignature:
+        return False
+    return True
+
+
+def hash_string(string):
+    digester = hashes.Hash(hashes.SHA256(), backend=default_backend())
+    digester.update(string.encode())
+    return base64.b64encode(digester.finalize()).decode()
+
+
+class Transaction():
+    def __init__(self, diploma, issuer_party_public_key, receiver_party_public_key, signature):
+        self.diploma = diploma
+        self.issuer_party_public_key = issuer_party_public_key
+        self.receiver_party_public_key = receiver_party_public_key
+        self.signature = signature
+
+    def to_string(self):
+        return json.dumps(self.__dict__)
+
+
+class Block():
+    def __init__(self, previous_block_hash):
+        self.previous_block_hash = previous_block_hash
+        self.transactions = []
+        self.nonce = 0
+
+    def add_transaction(self, transaction):
+        self.transactions.append(transaction)
+
+    def to_string(self):
+        return json.dumps(self.__dict__)
+
+    def is_valid(self):
+        block_hash = hash_string(self.to_string())
+        print("BlockHash: {}".format(block_hash))
+        return block_hash[0] == 0 # and block_hash[1] == 0
+
+    def hash_block_with_nonce(self, nonce):
+        self.nonce = nonce
+        print("TRY with nonce: {}".format(nonce))
+        return self.is_valid()
+
+
+class Diploma():
+    def __init__(self, name, subject, grade):
+        self.name = name
+        self.subject = subject
+        self.grade = grade
 
 
 class Blackboard():
@@ -56,10 +133,13 @@ class Server(Bottle):
         self.private_key = rsa.generate_private_key(public_exponent=65537, key_size=512, backend=default_backend())
         self.public_key = self.private_key.public_key()
         self.server_id_public_key_dictionary = dict()
+        self.last_block = Block(0)
 
         time.sleep(3)
-        self.pem = self.format_public_key()
+        self.pem = format_public_key(self.public_key)
         self.send_public_key()
+
+        self.do_parallel_task(method=self.create_new_block, args=())
 
         self.route('/', callback=self.index)
         self.get('/board', callback=self.get_board)
@@ -71,49 +151,26 @@ class Server(Bottle):
         self.get('/templates/<filename:path>', callback=self.get_template)
         self.post('/pk/receive', callback=self.receive_public_key)
 
-    def format_public_key(self):
-        return base64.b64encode(self.public_key.public_bytes(encoding=serialization.Encoding.PEM,
-                                                             format=serialization.PublicFormat.SubjectPublicKeyInfo))
+    def create_new_block(self):
+        print("Start mining")
+        finished = False
+        while not finished:
+            #time.sleep(500)
+            nonce = random.randint(0, 999999)
+            finished = self.last_block.hash_block_with_nonce(nonce)
+
+        print(self.last_block.to_string())
+
 
     def send_public_key(self):
         print("start_send")
-        self.propagate_to_all_servers('/pk/receive', self.to_json({"ip": self.ip, "public_key": "Bla"}), req='POST')
+        self.propagate_to_all_servers('/pk/receive', to_json({"ip": self.ip, "public_key": "Bla"}), req='POST')
 
     def receive_public_key(self):
         print("receive_public_key")
-        answer = self.from_json(request.forms)
+        answer = from_json(request.forms)
         print(answer['ip'])
         self.server_id_public_key_dictionary[answer['ip']] = answer['public_key']
-
-    def to_json(self, send_object):
-        json_obj = dict()
-        json_obj['data'] = json.dumps(send_object)
-        return json_obj
-
-    def from_json(self, forms):
-        return json.loads(forms['data'])
-
-    def sign(self, message):
-        return self.private_key.sign(base64.b64encode(message.encode()),
-                                     padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
-                                                 salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256())
-
-    def verify(self, public_key, message, signature):
-        print(message)
-        public_key = serialization.load_pem_public_key(base64.b64decode(public_key), backend=default_backend())
-        try:
-            public_key.verify(signature, base64.b64encode(message.encode()),
-                              padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
-                                          salt_length=padding.PSS.MAX_LENGTH),
-                              hashes.SHA256())
-        except InvalidSignature:
-            return False
-        return True
-
-    def hash(self, string):
-        digester = hashes.Hash(hashes.SHA256(), backend=default_backend())
-        digester.update(string.encode())
-        return base64.b64encode(digester.finalize()).decode()
 
     def do_parallel_task(self, method, args=None):
         thread = Thread(target=method,
@@ -169,8 +226,10 @@ class Server(Bottle):
 
     def add_entry(self):
         try:
-            new_entry = request.forms.get('entry')
-            self.blackboard.modify_content(new_entry, new_entry)
+            entry_name = request.forms.get('name')
+            entry_subject = request.forms.get('subject')
+            entry_grade = request.forms.get('grade')
+            self.blackboard.modify_content(random.randint(0, 9999), Diploma(entry_name, entry_subject, entry_grade))
         except Exception as e:
             print("[ERROR] " + str(e))
 
