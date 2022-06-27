@@ -81,9 +81,10 @@ class Block():
         return json.dumps(self.__dict__)
 
     def is_valid(self):
+        time.sleep(0.1)
         block_hash = hash_string(self.to_string())
         print("BlockHash: {}".format(block_hash))
-        return block_hash[0] == 0 # and block_hash[1] == 0
+        return block_hash[0] == str(0) and block_hash[1] == str(0)
 
     def hash_block_with_nonce(self, nonce):
         self.nonce = nonce
