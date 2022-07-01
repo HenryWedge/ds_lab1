@@ -65,7 +65,7 @@ class Transaction():
         self.signature = signature
 
     def to_string(self):
-        return json.dumps(self.__dict__)
+        return json.dumps(self, default=lambda x: x.__dict__,indent=4)
 
 
 
@@ -74,19 +74,29 @@ class Block():
     def __init__(self, previous_block_hash):
         self.previous_block_hash = previous_block_hash
         self.transactions = []
-        self.transactions.append(Transaction(None, "A", "A"))
-        self.transactions.append(Transaction(None, "B", "B"))
+        #self.transactions.append(Transaction(Diploma('Alfred','IT','5'), "A", "A"))
+        #self.transactions.append(Transaction(Diploma('Klaus','IT','5'), "B", "B"))
         self.nonce = 0
 
-    def add_transaction(self, tx_id, transaction):
-        self.transaction = transaction
+    def add_transaction(self,transaction):
+        self.transactions.append(transaction)
 
     def to_string(self):
         #self.transactions.to_string()
-        return json.dumps(self, default=lambda x: x.__dict__, sort_keys=True,indent=4)
+        return json.dumps(self, default=lambda x: x.__dict__,indent=4)
 
     def is_valid(self):
-        block_hash = hash_string(self.to_string())
+        try:
+            block_hash = hash_string(self.to_string())
+        except Exception as e:
+            print("[ERROR] " + str(e))
+            print("!!")
+            print(self.previous_block_hash)
+            print(self.transactions)
+            print(self.transactions[0].to_string())
+            print(self.nonce)
+            print("!!")
+
         print("BlockHash: {}".format(block_hash))
         return block_hash[0] == str(0) #and block_hash[1] == str(0)
 
@@ -103,7 +113,7 @@ class Diploma():
         self.grade = grade
 
     def to_string(self):
-        return json.dumps(self.__dict__)
+        return json.dumps(self, default=lambda x: x.__dict__,indent=4)
 
 
 class Blackboard():
@@ -175,9 +185,12 @@ class Server(Bottle):
 
         self.last_block.previous_block_hash = hash_string(self.last_block.to_string())
         print("---------")
-        print(self.last_block.to_string())
+        try:
+            print(self.last_block.to_string())
+        except:
+            print(self.last_block)
         print("---------")
-        # self.create_new_block()
+        self.create_new_block()
 
     def send_public_key(self):
         print("start_send")
@@ -257,7 +270,6 @@ class Server(Bottle):
         diploma = Diploma(entry_name, entry_subject, entry_grade)
 
         self.last_block.add_transaction(
-            random.randint(0, 9999),
             Transaction(diploma,
                         format_public_key(self.public_key), sign(self.private_key, diploma.to_string())))
         self.add_entry()
