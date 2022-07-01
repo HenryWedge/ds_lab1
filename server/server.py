@@ -20,7 +20,10 @@ import base64
 # ------------------------------------------------------------------------------------------------------
 def to_json(send_object):
     json_obj = dict()
-    json_obj['data'] = json.dumps(send_object)
+    if hasattr(send_object,'to_string'):
+        json_obj['data'] = send_object.to_string()
+    else:
+        json_obj['data'] = json.dumps(send_object)
     return json_obj
 
 
@@ -67,6 +70,10 @@ class Transaction():
     def to_string(self):
         return json.dumps(self, default=lambda x: x.__dict__,indent=4)
 
+    @classmethod
+    def from_dict(self,dict):
+        return Transaction(Diploma.from_dict(dict['diploma']), dict['issuer_party_public_key'],dict['signature'])
+
 
 
 
@@ -74,28 +81,31 @@ class Block():
     def __init__(self, previous_block_hash):
         self.previous_block_hash = previous_block_hash
         self.transactions = []
-        #self.transactions.append(Transaction(Diploma('Alfred','IT','5'), "A", "A"))
-        #self.transactions.append(Transaction(Diploma('Klaus','IT','5'), "B", "B"))
         self.nonce = 0
+
 
     def add_transaction(self,transaction):
         self.transactions.append(transaction)
 
     def to_string(self):
-        #self.transactions.to_string()
         return json.dumps(self, default=lambda x: x.__dict__,indent=4)
 
     def is_valid(self):
         block_hash = hash_string(self.to_string())
 
-        #########print("BlockHash: {}".format(block_hash))
-        return block_hash[0] == str(0) #and block_hash[1] == str(0)
+        print("BlockHash: {}".format(block_hash))
+        return block_hash[0] == str(0) and block_hash[1].isdigit()  #and block_hash[1] == str(0)
 
     def hash_block_with_nonce(self, nonce):
         self.nonce = nonce
-        #########print("TRY with nonce: {}".format(nonce))
+        print("TRY with nonce: {}".format(nonce))
         return self.is_valid()
 
+
+    @classmethod
+    def from_dict(self,dict):
+        transactionss = [Transaction.from_dict(tx) for tx in dict['transactions']]
+        return Block(dict['previous_block_hash'],transactionss,dict['nonce'])
 
 class Diploma():
     def __init__(self, name, subject, grade):
@@ -105,6 +115,11 @@ class Diploma():
 
     def to_string(self):
         return json.dumps(self, default=lambda x: x.__dict__,indent=4)
+
+    @classmethod
+    def from_dict(self,dict):
+        return Diploma(dict['name'],dict['subject'],dict['grade'])
+
 
 
 class Blackboard():
@@ -153,32 +168,54 @@ class Server(Bottle):
         self.route('/', callback=self.index)
         self.get('/board', callback=self.get_board)
         self.post('/board/propagate', callback=self.add_entry_with_propagation)
-        self.post('/board', callback=self.add_entry)
-        self.post('/board/<param>/propagate', callback=self.modify_entry_with_propagation)
-        self.post('/board/<param>/', callback=self.modify_entry)
         self.post('/', callback=self.post_index)
         self.get('/templates/<filename:path>', callback=self.get_template)
         self.post('/pk/receive', callback=self.receive_public_key)
         self.post('/block/new', callback=self.receive_block)
+        self.post('/transaction/new', callback=self.receive_transaction)
 
     def receive_block(self):
         new_block = from_json(request.forms)
         for transaction in new_block['transactions']:
-            self.blackboard.modify_content(transaction.tx_id, transaction.diploma)
+            transaction = Transaction.from_dict(transaction)
+            self.blackboard.modify_content(hash_string(transaction.to_string()), transaction.diploma)
+
+        nb = Block(new_block['previous_block_hash'])
+        nb.transactions = [Transaction.from_dict(tx) for tx in new_block['transactions']]
+        nb.nonce = new_block['nonce']
+
+        print(nb.to_string())
+
+        previous_block_hash = hash_string(nb.to_string())
+        self.last_block = Block(previous_block_hash)
+
+    def receive_transaction(self):
+        transaction = from_json(request.forms)
+        print(transaction)
+        transaction = Transaction.from_dict(transaction)
+        print(transaction)
+        self.last_block.transactions.append(transaction)
 
     def create_new_block(self):
+
         print("Start mining")
         finished = False
         while not finished:
+            while(not self.last_block.transactions):
+                time.sleep(1)
             time.sleep(0.1)
             nonce = random.randint(0, 999999)
             finished = self.last_block.hash_block_with_nonce(nonce)
 
-        self.last_block.previous_block_hash = hash_string(self.last_block.to_string())
+        self.propagate_to_all_servers('/block/new', to_json(self.last_block), req='POST')
+
         print("---------")
         print("Last Block:")
         print(self.last_block.to_string())
         print("---------")
+        self.last_block.previous_block_hash = hash_string(self.last_block.to_string())
+        self.last_block = Block(self.last_block.previous_block_hash)
+
         self.create_new_block()
 
     def send_public_key(self):
@@ -207,7 +244,6 @@ class Server(Bottle):
         time.sleep(delay)  # in sec
         method(*args)
 
-        ##
     def contact_another_server(self, srv_ip, URI, params_dict, req='POST'):
         success = False
         # print("Params dict: {}: ".format(params_dict))
@@ -244,14 +280,14 @@ class Server(Bottle):
                                                             self.ip),
                         board_dict=self.blackboard.get_content().items())
 
-    def add_entry(self):
-        try:
-            entry_name = request.forms.get('name')
-            entry_subject = request.forms.get('subject')
-            entry_grade = request.forms.get('grade')
-            self.blackboard.modify_content(random.randint(0, 9999), Diploma(entry_name, entry_subject, entry_grade))
-        except Exception as e:
-            print("[ERROR] " + str(e))
+    #def add_entry(self):
+    #    try:
+    #        entry_name = request.forms.get('name')
+    #        entry_subject = request.forms.get('subject')
+    #        entry_grade = request.forms.get('grade')
+    #        self.blackboard.modify_content(Diploma(entry_name, entry_subject, entry_grade))
+    #    except Exception as e:
+    #        print("[ERROR] " + str(e))
 
     def add_entry_with_propagation(self):
         entry_name = request.forms.get('name')
@@ -259,25 +295,12 @@ class Server(Bottle):
         entry_grade = request.forms.get('grade')
         diploma = Diploma(entry_name, entry_subject, entry_grade)
 
-        self.last_block.add_transaction(
-            Transaction(diploma,
-                        format_public_key(self.public_key), sign(self.private_key, diploma.to_string())))
+        tx = Transaction(diploma,
+                    format_public_key(self.public_key), sign(self.private_key, diploma.to_string()))
+        self.last_block.add_transaction(tx)
+        self.blackboard.modify_content(hash_string(tx.to_string()),Diploma(entry_name, entry_subject, entry_grade))
 
-        self.add_entry()
-        self.propagate_to_all_servers('/board', request.forms.dict, req='POST')
-
-    def modify_entry(self, param):
-        entry = request.params.get('entry')
-        isModify = request.params.get('delete') == '0'
-        self.blackboard.delete_content(param)
-
-        if (isModify):
-            self.blackboard.modify_content(entry, entry)
-        return
-
-    def modify_entry_with_propagation(self, param):
-        self.modify_entry(param)
-        self.propagate_to_all_servers('/board/{}/'.format(param), request.forms.dict, req='POST')
+        self.propagate_to_all_servers('/transaction/new', to_json(tx), req='POST')
 
     # post on ('/')
     def post_index(self):
