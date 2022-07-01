@@ -207,6 +207,7 @@ class Server(Bottle):
         time.sleep(delay)  # in sec
         method(*args)
 
+        ##
     def contact_another_server(self, srv_ip, URI, params_dict, req='POST'):
         success = False
         # print("Params dict: {}: ".format(params_dict))
