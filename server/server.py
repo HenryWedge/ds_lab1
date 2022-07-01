@@ -68,24 +68,27 @@ class Transaction():
         return json.dumps(self.__dict__)
 
 
+
+
 class Block():
     def __init__(self, previous_block_hash):
         self.previous_block_hash = previous_block_hash
-        #self.transactions = dict()
-        self.transaction = None #Transaction(None, "A", "A")
+        self.transactions = []
+        self.transactions.append(Transaction(None, "A", "A"))
+        self.transactions.append(Transaction(None, "B", "B"))
         self.nonce = 0
 
     def add_transaction(self, tx_id, transaction):
         self.transaction = transaction
 
     def to_string(self):
-        self.transaction.to_string()
-        return json.dumps(self.__dict__)
+        #self.transactions.to_string()
+        return json.dumps(self, default=lambda x: x.__dict__, sort_keys=True,indent=4)
 
     def is_valid(self):
         block_hash = hash_string(self.to_string())
         print("BlockHash: {}".format(block_hash))
-        return block_hash[0] == str(0) and block_hash[1] == str(0)
+        return block_hash[0] == str(0) #and block_hash[1] == str(0)
 
     def hash_block_with_nonce(self, nonce):
         self.nonce = nonce
@@ -171,8 +174,9 @@ class Server(Bottle):
             finished = self.last_block.hash_block_with_nonce(nonce)
 
         self.last_block.previous_block_hash = hash_string(self.last_block.to_string())
+        print("---------")
         print(self.last_block.to_string())
-
+        print("---------")
         # self.create_new_block()
 
     def send_public_key(self):
