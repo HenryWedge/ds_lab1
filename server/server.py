@@ -30,13 +30,13 @@ def from_json(forms):
 
 def format_public_key(public_key):
     return base64.b64encode(public_key.public_bytes(encoding=serialization.Encoding.PEM,
-                                                    format=serialization.PublicFormat.SubjectPublicKeyInfo))
+                                                    format=serialization.PublicFormat.SubjectPublicKeyInfo)).decode()
 
 
 def sign(private_key, message: string):
-    return private_key.sign(base64.b64encode(message.encode()),
+    return base64.b64encode(private_key.sign(base64.b64encode(message.encode()),
                             padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
-                                        salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256())
+                                        salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256())).decode()
 
 
 def verify(public_key, message, signature):
@@ -86,23 +86,14 @@ class Block():
         return json.dumps(self, default=lambda x: x.__dict__,indent=4)
 
     def is_valid(self):
-        try:
-            block_hash = hash_string(self.to_string())
-        except Exception as e:
-            print("[ERROR] " + str(e))
-            print("!!")
-            print(self.previous_block_hash)
-            print(self.transactions)
-            print(self.transactions[0].to_string())
-            print(self.nonce)
-            print("!!")
+        block_hash = hash_string(self.to_string())
 
-        print("BlockHash: {}".format(block_hash))
+        #########print("BlockHash: {}".format(block_hash))
         return block_hash[0] == str(0) #and block_hash[1] == str(0)
 
     def hash_block_with_nonce(self, nonce):
         self.nonce = nonce
-        print("TRY with nonce: {}".format(nonce))
+        #########print("TRY with nonce: {}".format(nonce))
         return self.is_valid()
 
 
@@ -185,10 +176,8 @@ class Server(Bottle):
 
         self.last_block.previous_block_hash = hash_string(self.last_block.to_string())
         print("---------")
-        try:
-            print(self.last_block.to_string())
-        except:
-            print(self.last_block)
+        print("Last Block:")
+        print(self.last_block.to_string())
         print("---------")
         self.create_new_block()
 
@@ -272,6 +261,7 @@ class Server(Bottle):
         self.last_block.add_transaction(
             Transaction(diploma,
                         format_public_key(self.public_key), sign(self.private_key, diploma.to_string())))
+
         self.add_entry()
         self.propagate_to_all_servers('/board', request.forms.dict, req='POST')
 
