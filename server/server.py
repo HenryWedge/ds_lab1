@@ -18,9 +18,12 @@ import base64
 
 
 # ------------------------------------------------------------------------------------------------------
+quite_mode = True
+
+
 def to_json(send_object):
     json_obj = dict()
-    if hasattr(send_object,'to_string'):
+    if hasattr(send_object, 'to_string'):
         json_obj['data'] = send_object.to_string()
     else:
         json_obj['data'] = json.dumps(send_object)
@@ -43,15 +46,15 @@ def sign(private_key, message: string):
 
 
 def verify(public_key, message, signature):
-    print(message)
     public_key = serialization.load_pem_public_key(base64.b64decode(public_key), backend=default_backend())
     try:
-        public_key.verify(signature, base64.b64encode(message.encode()),
+        public_key.verify(base64.b64decode(signature), base64.b64encode(message.encode()),
                           padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
                                       salt_length=padding.PSS.MAX_LENGTH),
                           hashes.SHA256())
     except InvalidSignature:
         return False
+    print("Successfully verified")
     return True
 
 
@@ -70,11 +73,12 @@ class Transaction():
     def to_string(self):
         return json.dumps(self, default=lambda x: x.__dict__,indent=4)
 
+    def is_valid(self):
+        return verify(self.issuer_party_public_key, self.diploma.to_string(), self.signature)
+
     @classmethod
-    def from_dict(self,dict):
-        return Transaction(Diploma.from_dict(dict['diploma']), dict['issuer_party_public_key'],dict['signature'])
-
-
+    def from_dict(cls, dict):
+        return Transaction(Diploma.from_dict(dict['diploma']), dict['issuer_party_public_key'], dict['signature'])
 
 
 class Block():
@@ -83,8 +87,7 @@ class Block():
         self.transactions = []
         self.nonce = 0
 
-
-    def add_transaction(self,transaction):
+    def add_transaction(self, transaction):
         self.transactions.append(transaction)
 
     def to_string(self):
@@ -93,19 +96,16 @@ class Block():
     def is_valid(self):
         block_hash = hash_string(self.to_string())
 
-        print("BlockHash: {}".format(block_hash))
-        return block_hash[0] == str(0) and block_hash[1].isdigit()  #and block_hash[1] == str(0)
+        if not quite_mode:
+            print("BlockHash: {}".format(block_hash))
+        return block_hash[0] == str(0) #and block_hash[1] == str(0)
 
     def hash_block_with_nonce(self, nonce):
         self.nonce = nonce
-        print("TRY with nonce: {}".format(nonce))
+        if not quite_mode:
+            print("TRY with nonce: {}".format(nonce))
         return self.is_valid()
 
-
-    @classmethod
-    def from_dict(self,dict):
-        transactionss = [Transaction.from_dict(tx) for tx in dict['transactions']]
-        return Block(dict['previous_block_hash'],transactionss,dict['nonce'])
 
 class Diploma():
     def __init__(self, name, subject, grade):
@@ -117,9 +117,8 @@ class Diploma():
         return json.dumps(self, default=lambda x: x.__dict__,indent=4)
 
     @classmethod
-    def from_dict(self,dict):
-        return Diploma(dict['name'],dict['subject'],dict['grade'])
-
+    def from_dict(self, dict):
+        return Diploma(dict['name'], dict['subject'], dict['grade'])
 
 
 class Blackboard():
@@ -176,9 +175,14 @@ class Server(Bottle):
 
     def receive_block(self):
         new_block = from_json(request.forms)
+
         for transaction in new_block['transactions']:
             transaction = Transaction.from_dict(transaction)
+            if not transaction.is_valid():
+                print("!!!!!!!!!!!!!! \n Received invalid transaction \n \n")
             self.blackboard.modify_content(hash_string(transaction.to_string()), transaction.diploma)
+
+        print("Validity of block was checked! It will be added to the block chain!")
 
         nb = Block(new_block['previous_block_hash'])
         nb.transactions = [Transaction.from_dict(tx) for tx in new_block['transactions']]
@@ -190,22 +194,21 @@ class Server(Bottle):
         self.last_block = Block(previous_block_hash)
 
     def receive_transaction(self):
-        transaction = from_json(request.forms)
-        print(transaction)
-        transaction = Transaction.from_dict(transaction)
-        print(transaction)
-        self.last_block.transactions.append(transaction)
+        self.last_block.transactions.append(Transaction.from_dict(from_json(request.forms)))
 
     def create_new_block(self):
-
         print("Start mining")
         finished = False
+
         while not finished:
-            while(not self.last_block.transactions):
+            while not self.last_block.transactions:
                 time.sleep(1)
-            time.sleep(0.1)
+            time.sleep(0.5)
             nonce = random.randint(0, 999999)
             finished = self.last_block.hash_block_with_nonce(nonce)
+
+        for transaction in self.last_block.transactions:
+            self.blackboard.modify_content(hash_string(transaction.to_string()), transaction.diploma)
 
         self.propagate_to_all_servers('/block/new', to_json(self.last_block), req='POST')
 
@@ -279,15 +282,6 @@ class Server(Bottle):
                         board_title='Server {} ({})'.format(self.id,
                                                             self.ip),
                         board_dict=self.blackboard.get_content().items())
-
-    #def add_entry(self):
-    #    try:
-    #        entry_name = request.forms.get('name')
-    #        entry_subject = request.forms.get('subject')
-    #        entry_grade = request.forms.get('grade')
-    #        self.blackboard.modify_content(Diploma(entry_name, entry_subject, entry_grade))
-    #    except Exception as e:
-    #        print("[ERROR] " + str(e))
 
     def add_entry_with_propagation(self):
         entry_name = request.forms.get('name')
