@@ -57,5 +57,6 @@
                                     <span class="text mt-4 mb-0 float-right"><input type="submit" value="Submit to board"/></span>
                                 </form>
                             </div>
+
                         </div>
                     </div>
