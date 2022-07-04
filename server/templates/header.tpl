@@ -50,10 +50,11 @@
                             </div>
                             <div class="card-body">
                                 <h3>Submit a message to the board</h3>
-                                <form id="usrform" action="/board/propagate" target="noreload" method="post">
+                                <form id="usrform" action="/signrequest/new" target="noreload" method="post">
                                     <input type="text" placeholder="Name" name="name" size="100%" autofocus required />
                                     <input type="text" placeholder="Subject" name="subject" size="100%" autofocus required />
                                     <input type="text" placeholder="Grade" name="grade" size="100%" autofocus required />
+                                    <input type="text" placeholder="Target" name="target" size="100%" autofocus required />
                                     <span class="text mt-4 mb-0 float-right"><input type="submit" value="Submit to board"/></span>
                                 </form>
                             </div>

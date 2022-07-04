@@ -6,12 +6,12 @@
 
                             <div class="card-body">
                             % for id, value in board_dict['accept']:
-                                <form class="entryform" target="noreload" method="post" action="/request/accept/{id}">
-                                    <input type="text" name="name" value={{value}} readonly disabled>
-                                    <input type="text" name="subject" value={{value}} readonly disabled>
-                                    <input type="text" name="grade" value={{value}} readonly disabled>
+                                <form class="entryform" target="noreload" method="post" action="/signrequest/answer/{{id}}">
+                                    <input type="text" name="name" value={{value.diploma.name}} readonly>
+                                    <input type="text" name="subject" value={{value.diploma.subject}} readonly>
+                                    <input type="text" name="grade" value={{value.diploma.grade}} readonly>
                                     <button type="submit" name="accept" value="1">Accept</button>
-                                    <button type="submit" name="reject" value="0">Reject</button>
+                                    <button type="submit" name="accept" value="0">Reject</button>
                                 </form>
                             %end
                             </div>

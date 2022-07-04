@@ -16,9 +16,8 @@ import requests
 import json
 import base64
 
-
 # ------------------------------------------------------------------------------------------------------
-quite_mode = False
+quite_mode = True
 
 
 def to_json(send_object):
@@ -41,8 +40,8 @@ def format_public_key(public_key):
 
 def sign(private_key, message: string):
     return base64.b64encode(private_key.sign(base64.b64encode(message.encode()),
-                            padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
-                                        salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256())).decode()
+                                             padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
+                                                         salt_length=padding.PSS.MAX_LENGTH), hashes.SHA256())).decode()
 
 
 def verify(public_key, message, signature):
@@ -65,20 +64,27 @@ def hash_string(string):
 
 
 class Transaction():
-    def __init__(self, diploma, issuer_party_public_key, signature):
+    def __init__(self, diploma, public_key_1, signature_1, public_key_2, signature_2):
         self.diploma = diploma
-        self.issuer_party_public_key = issuer_party_public_key
-        self.signature = signature
+        self.public_key_1 = public_key_1
+        self.public_key_2 = public_key_2
+        self.signature_1 = signature_1
+        self.signature_2 = signature_2
 
     def to_string(self):
-        return json.dumps(self, default=lambda x: x.__dict__,indent=4)
+        return json.dumps(self, default=lambda x: x.__dict__, indent=4)
 
     def is_valid(self):
-        return verify(self.issuer_party_public_key, self.diploma.to_string(), self.signature)
+        print("publicKey: {} \n signature: {}".format(self.public_key_1, self.signature_1))
+        print("publicKey: {} \n signature: {}".format(self.public_key_2, self.signature_2))
+
+        return verify(self.public_key_1, self.diploma.to_string(), self.signature_1) \
+               and verify(self.public_key_2, self.diploma.to_string(), self.signature_2)
 
     @classmethod
     def from_dict(cls, dict):
-        return Transaction(Diploma.from_dict(dict['diploma']), dict['issuer_party_public_key'], dict['signature'])
+        return Transaction(Diploma.from_dict(dict['diploma']), dict['public_key_1'], dict['signature_1'],
+                           dict['public_key_2'], dict['signature_2'])
 
 
 class Block():
@@ -91,14 +97,14 @@ class Block():
         self.transactions.append(transaction)
 
     def to_string(self):
-        return json.dumps(self, default=lambda x: x.__dict__,indent=4)
+        return json.dumps(self, default=lambda x: x.__dict__, indent=4)
 
     def is_valid(self):
         block_hash = hash_string(self.to_string())
 
         if not quite_mode:
             print("BlockHash: {}".format(block_hash))
-        return block_hash[0] == str(0) #and block_hash[1] == str(0)
+        return block_hash[0] == str(0)  # and block_hash[1] == str(0)
 
     def hash_block_with_nonce(self, nonce):
         self.nonce = nonce
@@ -114,15 +120,21 @@ class Diploma():
         self.grade = grade
 
     def to_string(self):
-        return json.dumps(self, default=lambda x: x.__dict__,indent=4)
+        return json.dumps(self, default=lambda x: x.__dict__, indent=4)
 
     @classmethod
     def from_dict(self, dict):
         return Diploma(dict['name'], dict['subject'], dict['grade'])
 
 
-class Blackboard():
+class SignRequest():
+    def __init__(self, signature, diploma, public_key):
+        self.signature = signature
+        self.diploma = diploma
+        self.public_key = public_key
 
+
+class Blackboard():
     def __init__(self):
         self.content = dict()
         self.lock = Lock()  # use lock when you modify the content
@@ -156,6 +168,7 @@ class Server(Bottle):
         self.private_key = rsa.generate_private_key(public_exponent=65537, key_size=512, backend=default_backend())
         self.public_key = self.private_key.public_key()
         self.server_id_public_key_dictionary = dict()
+        self.sign_request_dict = dict()
         self.last_block = Block(0)
 
         time.sleep(3)
@@ -172,6 +185,40 @@ class Server(Bottle):
         self.post('/pk/receive', callback=self.receive_public_key)
         self.post('/block/new', callback=self.receive_block)
         self.post('/transaction/new', callback=self.receive_transaction)
+        self.post('/signrequest/new', callback=self.create_sign_request)
+        self.post('/signrequest/receive', callback=self.receive_sign_request)
+        self.post('/signrequest/answer/<param>', callback=self.answer_sign_request)
+
+    def create_sign_request(self):
+        entry_name = request.forms.get('name')
+        entry_subject = request.forms.get('subject')
+        entry_grade = request.forms.get('grade')
+        entry_target = request.forms.get('target')
+
+        sign_request = Diploma(entry_name, entry_subject, entry_grade)
+        signature = sign(self.private_key, sign_request.to_string())
+        json = to_json(sign_request)
+        json['signature'] = signature
+        json['public_key'] = self.public_key
+        self.contact_another_server("10.1.0.{}".format(entry_target), "/signrequest/receive", json)
+
+    def receive_sign_request(self):
+        signature = request.forms['signature']
+        public_key = request.forms['public_key']
+        diploma = Diploma.from_dict(from_json(request.forms))
+        # hash_string(sign_request.to_string())
+        self.sign_request_dict[str(random.randint(0, 9999))] = SignRequest(signature, diploma, public_key)
+
+    def answer_sign_request(self, param):
+        sign_request = self.sign_request_dict[param]
+        accept = request.params.get('accept') == '1'
+
+        print("accept: {}".format(accept), "sign_request_id: {}".format(param))
+
+        if accept:
+            self.add_entry_with_propagation(sign_request)
+
+        self.sign_request_dict.pop(param)
 
     def receive_block(self):
         new_block = from_json(request.forms)
@@ -272,7 +319,7 @@ class Server(Bottle):
     def index(self):
         board_dict = dict()
         board_dict['data'] = self.blackboard.get_content().items()
-        board_dict['accept'] = []
+        board_dict['accept'] = self.sign_request_dict.items()
         return template('server/templates/index.tpl',
                         board_title='Server {} ({})'.format(self.id,
                                                             self.ip),
@@ -283,24 +330,21 @@ class Server(Bottle):
     def get_board(self):
         board_dict = dict()
         board_dict['data'] = self.blackboard.get_content().items()
-        accept_dict = dict()
-        accept_dict["1"] = "Value"
-        board_dict['accept'] = accept_dict.items()
+        board_dict['accept'] = self.sign_request_dict.items()
         return template('server/templates/blackboard.tpl',
                         board_title='Server {} ({})'.format(self.id,
                                                             self.ip),
                         board_dict=board_dict)
 
-    def add_entry_with_propagation(self):
-        entry_name = request.forms.get('name')
-        entry_subject = request.forms.get('subject')
-        entry_grade = request.forms.get('grade')
-        diploma = Diploma(entry_name, entry_subject, entry_grade)
+    def add_entry_with_propagation(self, sign_request):
+        print("!!!!!!!!!\n A: {} \n B: {} \n !!!!!!!!!!".format(format_public_key(self.public_key),
+                                                                sign_request.public_key))
 
-        tx = Transaction(diploma,
-                    format_public_key(self.public_key), sign(self.private_key, diploma.to_string()))
+        tx = Transaction(sign_request.diploma,
+                         format_public_key(self.public_key), sign(self.private_key, sign_request.diploma.to_string()),
+                         format_public_key(sign_request.public_key), sign_request.signature)
         self.last_block.add_transaction(tx)
-        self.blackboard.modify_content(hash_string(tx.to_string()),Diploma(entry_name, entry_subject, entry_grade))
+        self.blackboard.modify_content(hash_string(tx.to_string()), sign_request.diploma)
 
         self.propagate_to_all_servers('/transaction/new', to_json(tx), req='POST')
 
