@@ -199,7 +199,7 @@ class Server(Bottle):
         signature = sign(self.private_key, sign_request.to_string())
         json = to_json(sign_request)
         json['signature'] = signature
-        json['public_key'] = self.public_key
+        json['public_key'] = format_public_key(self.public_key)
         self.contact_another_server("10.1.0.{}".format(entry_target), "/signrequest/receive", json)
 
     def receive_sign_request(self):
@@ -342,7 +342,7 @@ class Server(Bottle):
 
         tx = Transaction(sign_request.diploma,
                          format_public_key(self.public_key), sign(self.private_key, sign_request.diploma.to_string()),
-                         format_public_key(sign_request.public_key), sign_request.signature)
+                         sign_request.public_key, sign_request.signature)
         self.last_block.add_transaction(tx)
         self.blackboard.modify_content(hash_string(tx.to_string()), sign_request.diploma)
 
