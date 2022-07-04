@@ -17,7 +17,7 @@ import json
 import base64
 
 # ------------------------------------------------------------------------------------------------------
-quite_mode = True
+quite_mode = False
 
 
 def to_json(send_object):
@@ -104,7 +104,7 @@ class Block():
 
         if not quite_mode:
             print("BlockHash: {}".format(block_hash))
-        return block_hash[0] == str(0)  # and block_hash[1] == str(0)
+        return block_hash[0] == str(0) and block_hash[1] == str(0)
 
     def hash_block_with_nonce(self, nonce):
         self.nonce = nonce
@@ -173,7 +173,7 @@ class Server(Bottle):
 
         time.sleep(3)
         self.pem = format_public_key(self.public_key)
-        self.send_public_key()
+        #self.send_public_key()
 
         self.do_parallel_task(method=self.create_new_block, args=())
 
@@ -250,7 +250,7 @@ class Server(Bottle):
         while not finished:
             while not self.last_block.transactions:
                 time.sleep(1)
-            time.sleep(0.5)
+            time.sleep(0.001)
             nonce = random.randint(0, 999999)
             finished = self.last_block.hash_block_with_nonce(nonce)
 
@@ -344,7 +344,7 @@ class Server(Bottle):
                          format_public_key(self.public_key), sign(self.private_key, sign_request.diploma.to_string()),
                          sign_request.public_key, sign_request.signature)
         self.last_block.add_transaction(tx)
-        self.blackboard.modify_content(hash_string(tx.to_string()), sign_request.diploma)
+        #self.blackboard.modify_content(hash_string(tx.to_string()), sign_request.diploma)
 
         self.propagate_to_all_servers('/transaction/new', to_json(tx), req='POST')
 
