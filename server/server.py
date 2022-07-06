@@ -104,7 +104,7 @@ class Block():
 
         if not quite_mode:
             print("BlockHash: {}".format(block_hash))
-        return block_hash[0] == str(0) and block_hash[1] == str(0)
+        return block_hash[0] == str(0) and block_hash[1] == str(0) and block_hash[2] == str(0) #and block_hash[4] == str(0)
 
     def hash_block_with_nonce(self, nonce):
         self.nonce = nonce
@@ -246,14 +246,16 @@ class Server(Bottle):
     def create_new_block(self):
         print("Start mining")
         finished = False
-
+        timestamp = time.time()
         while not finished:
+            time.sleep(0.01)
             while not self.last_block.transactions:
                 time.sleep(1)
-            time.sleep(0.001)
+                timestamp = time.time()
             nonce = random.randint(0, 999999)
             finished = self.last_block.hash_block_with_nonce(nonce)
-
+        print('----------------')
+        print('Hashing Time:' + str(time.time()-timestamp))
         for transaction in self.last_block.transactions:
             self.blackboard.modify_content(hash_string(transaction.to_string()), transaction.diploma, hash_string(self.last_block.to_string()))
 
@@ -319,7 +321,6 @@ class Server(Bottle):
     def index(self):
         board_dict = dict()
         board_dict['data'] = self.blackboard.get_content().items()
-        print(board_dict)
         board_dict['accept'] = self.sign_request_dict.items()
         return template('server/templates/index.tpl',
                         board_title='Server {} ({})'.format(self.id,
