@@ -230,7 +230,7 @@ class Server(Bottle):
         for transaction in new_block['transactions']:
             transaction = Transaction.from_dict(transaction)
             if not transaction.is_valid():
-                print("!!!!!!!!!!!!!! \n Received invalid transaction \n \n")
+                print("Received invalid transaction \n \n")
             self.blackboard.modify_content(hash_string(transaction.to_string()), transaction.diploma, hash_string(nb.to_string()))
 
         print("Validity of block was checked! It will be added to the block chain!")
@@ -275,7 +275,6 @@ class Server(Bottle):
     def receive_public_key(self):
         print("receive_public_key")
         answer = from_json(request.forms)
-        print(answer['ip'])
         self.server_id_public_key_dictionary[answer['ip']] = answer['public_key']
 
     def do_parallel_task(self, method, args=None):
@@ -296,7 +295,6 @@ class Server(Bottle):
 
     def contact_another_server(self, srv_ip, URI, params_dict, req='POST'):
         success = False
-        # print("Params dict: {}: ".format(params_dict))
         try:
             if 'POST' in req:
                 res = requests.post('http://{}{}'.format(srv_ip, URI),
@@ -319,7 +317,6 @@ class Server(Bottle):
     def index(self):
         board_dict = dict()
         board_dict['data'] = self.blackboard.get_content().items()
-        print(board_dict)
         board_dict['accept'] = self.sign_request_dict.items()
         return template('server/templates/index.tpl',
                         board_title='Server {} ({})'.format(self.id,
@@ -337,9 +334,7 @@ class Server(Bottle):
                                                             self.ip),
                         board_dict=board_dict)
 
-    def add_entry_with_propagation(self, sign_request):
-        print("!!!!!!!!!\n A: {} \n B: {} \n !!!!!!!!!!".format(format_public_key(self.public_key),
-                                                                sign_request.public_key))
+    def add_entry_with_propagation(self, sign_request):)
 
         tx = Transaction(sign_request.diploma,
                          format_public_key(self.public_key), sign(self.private_key, sign_request.diploma.to_string()),
