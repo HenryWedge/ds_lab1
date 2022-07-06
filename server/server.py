@@ -144,9 +144,9 @@ class Blackboard():
             cnt = self.content
         return cnt
 
-    def modify_content(self, new_id, new_entry):
+    def modify_content(self, new_id, new_entry, block_hash):
         with self.lock:
-            self.content[str(new_id)] = new_entry
+            self.content[str(new_id)] = (new_entry,block_hash)
         return
 
     def delete_content(self, delete_id):
@@ -223,17 +223,17 @@ class Server(Bottle):
     def receive_block(self):
         new_block = from_json(request.forms)
 
+        nb = Block(new_block['previous_block_hash'])
+        nb.transactions = [Transaction.from_dict(tx) for tx in new_block['transactions']]
+        nb.nonce = new_block['nonce']
+
         for transaction in new_block['transactions']:
             transaction = Transaction.from_dict(transaction)
             if not transaction.is_valid():
                 print("!!!!!!!!!!!!!! \n Received invalid transaction \n \n")
-            self.blackboard.modify_content(hash_string(transaction.to_string()), transaction.diploma)
+            self.blackboard.modify_content(hash_string(transaction.to_string()), transaction.diploma, hash_string(nb.to_string()))
 
         print("Validity of block was checked! It will be added to the block chain!")
-
-        nb = Block(new_block['previous_block_hash'])
-        nb.transactions = [Transaction.from_dict(tx) for tx in new_block['transactions']]
-        nb.nonce = new_block['nonce']
 
         print(nb.to_string())
 
@@ -255,7 +255,7 @@ class Server(Bottle):
             finished = self.last_block.hash_block_with_nonce(nonce)
 
         for transaction in self.last_block.transactions:
-            self.blackboard.modify_content(hash_string(transaction.to_string()), transaction.diploma)
+            self.blackboard.modify_content(hash_string(transaction.to_string()), transaction.diploma, hash_string(self.last_block.to_string()))
 
         self.propagate_to_all_servers('/block/new', to_json(self.last_block), req='POST')
 
@@ -319,6 +319,7 @@ class Server(Bottle):
     def index(self):
         board_dict = dict()
         board_dict['data'] = self.blackboard.get_content().items()
+        print(board_dict)
         board_dict['accept'] = self.sign_request_dict.items()
         return template('server/templates/index.tpl',
                         board_title='Server {} ({})'.format(self.id,
